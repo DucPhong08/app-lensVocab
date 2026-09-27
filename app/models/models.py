@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Annotated, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
 from pymongo import ASCENDING, IndexModel
 
-
 # ─────────────────────────────────────────────────────────────────────────────
 # Enums
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class AccountTier(str, enum.Enum):
     FREE = "FREE"
@@ -37,11 +37,12 @@ class ReviewQuality(int, enum.Enum):
 # User Preferences (Tùy chọn học tập của người dùng)
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class UserPreferences(BaseModel):
-    preferred_voice_id: str = "Joanna"       # Joanna, Matthew, Amy, Brian, Olivia
-    voice_speed: float = 1.0                  # 0.75, 1.0, 1.25
-    daily_review_goal: int = 15               # Mục tiêu số từ ôn mỗi ngày (Anti-demotivation)
-    target_language: str = "vi"               # Ngôn ngữ giải nghĩa
+    preferred_voice_id: str = "Joanna"  # Joanna, Matthew, Amy, Brian, Olivia
+    voice_speed: float = 1.0  # 0.75, 1.0, 1.25
+    daily_review_goal: int = 15  # Mục tiêu số từ ôn mỗi ngày (Anti-demotivation)
+    target_language: str = "vi"  # Ngôn ngữ giải nghĩa
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -57,6 +58,7 @@ _EMBEDDING_DIM = 1024
 # User
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class User(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     email: Annotated[str, Indexed(unique=True)]
@@ -69,8 +71,8 @@ class User(Document):
     quota_reset_date: Optional[date] = None
 
     is_active: bool = True
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "users"
@@ -81,18 +83,19 @@ class User(Document):
 # GlobalFlashcard
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class GlobalFlashcard(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     keyword: Annotated[str, Indexed(unique=True)]
-    pronunciation: Optional[str] = None       # Phiên âm IPA: /tʃer/
-    meaning_vi: str                           # Nghĩa tiếng Việt
-    example_1: str                            # Ví dụ câu 1
-    example_2: str                            # Ví dụ câu 2
-    related_words: list[str] = []             # Từ liên quan: seat, sofa, stool
-    audio_base64: Optional[str] = None        # Giọng đọc từ vựng từ Polly (MP3 base64)
-    embedding: Optional[list[float]] = None   # Vector embedding 1024 chiều từ Titan v2
+    pronunciation: Optional[str] = None  # Phiên âm IPA: /tʃer/
+    meaning_vi: str  # Nghĩa tiếng Việt
+    example_1: str  # Ví dụ câu 1
+    example_2: str  # Ví dụ câu 2
+    related_words: list[str] = []  # Từ liên quan: seat, sofa, stool
+    audio_base64: Optional[str] = None  # Giọng đọc từ vựng từ Polly (MP3 base64)
+    embedding: Optional[list[float]] = None  # Vector embedding 1024 chiều từ Titan v2
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "global_flashcards"
@@ -102,6 +105,7 @@ class GlobalFlashcard(Document):
 # ─────────────────────────────────────────────────────────────────────────────
 # UserFlashcard
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class UserFlashcard(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
@@ -116,7 +120,7 @@ class UserFlashcard(Document):
     next_review_date: date = Field(default_factory=date.today)
     total_reviews: int = 0
 
-    added_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    added_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     last_reviewed_at: Optional[datetime] = None
 
     class Settings:
@@ -132,6 +136,7 @@ class UserFlashcard(Document):
 # ReviewLog
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 class ReviewLog(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
     user_id: uuid.UUID
@@ -143,7 +148,7 @@ class ReviewLog(Document):
     efactor_before: float
     efactor_after: float
 
-    reviewed_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    reviewed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "review_logs"
@@ -153,6 +158,7 @@ class ReviewLog(Document):
 # ─────────────────────────────────────────────────────────────────────────────
 # SystemSetting (Singleton cấu hình hệ thống động của Quản trị viên)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class SystemSetting(Document):
     id: str = Field(default="global_config")
@@ -164,8 +170,7 @@ class SystemSetting(Document):
     semantic_similarity_threshold: float = 0.85
     maintenance_mode: bool = False
 
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
     class Settings:
         name = "system_settings"
-

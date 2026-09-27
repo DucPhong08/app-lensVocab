@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
@@ -22,13 +22,13 @@ def _build_default_system_setting() -> SystemSetting:
         vision_confidence_threshold=settings.VISION_CONFIDENCE_THRESHOLD,
         semantic_similarity_threshold=settings.SEMANTIC_SIMILARITY_THRESHOLD,
         maintenance_mode=False,
-        updated_at=datetime.now(timezone.utc),
+        updated_at=datetime.now(UTC),
     )
 
 
 async def get_system_settings() -> SystemSetting:
     """Lấy cài đặt hệ thống động từ MongoDB Atlas (Singleton 'global_config').
-    
+
     Fallback an toàn về giá trị từ .env/Settings nếu MongoDB chưa khởi tạo
     hoặc chưa có record.
     """
@@ -74,7 +74,7 @@ async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:
         if key in allowed_fields and hasattr(doc, key):
             setattr(doc, key, value)
 
-    doc.updated_at = datetime.now(timezone.utc)
+    doc.updated_at = datetime.now(UTC)
     try:
         await doc.save()
     except Exception as exc:

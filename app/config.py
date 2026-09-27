@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     # ── Cache ────────────────────────────────────────────────────────────────
     REDIS_URL: str = "redis://localhost:6379/0"
     REDIS_CACHE_TTL: int = 86400 * 7  # 7 ngày
-    REDIS_QUOTA_TTL: int = 86400      # 24 giờ
+    REDIS_QUOTA_TTL: int = 86400  # 24 giờ
 
     # ── Security ─────────────────────────────────────────────────────────────
     # Bắt buộc, không có default — thiếu env var này sẽ fail ngay lúc khởi

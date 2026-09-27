@@ -44,7 +44,7 @@ $$EF' = EF + \Big(0.1 - (5 - q) \times (0.08 + (5 - q) \times 0.02)\Big)$$
 * **Nếu $quality \ge 3$ (Học viên nhớ đúng):**
   * `repetitions = repetitions + 1`.
   * Chu kỳ `interval` (số ngày tính từ hôm nay tới lần ôn kế tiếp) được tính như sau:
-    $$\text{interval} = \begin{cases} 
+    $$\text{interval} = \begin{cases}
       1 & \text{khi } \text{repetitions} = 1 \\
       6 & \text{khi } \text{repetitions} = 2 \\
       \text{round}(\text{interval}_{\text{trước}} \times EF') & \text{khi } \text{repetitions} > 2

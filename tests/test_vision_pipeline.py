@@ -49,20 +49,26 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
     def test_invalid_content_type_returns_400(self):
         file_content = b"fake pdf content"
         files = {"file": ("test.pdf", io.BytesIO(file_content), "application/pdf")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "INVALID_IMAGE_FORMAT")
 
     def test_empty_image_returns_400(self):
         files = {"file": ("empty.jpg", io.BytesIO(b""), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "FILE_EMPTY")
 
     def test_image_larger_than_5mb_returns_413(self):
         large_bytes = b"0" * (5 * 1024 * 1024 + 1)
         files = {"file": ("large.jpg", io.BytesIO(large_bytes), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 413)
         self.assertEqual(res.json()["detail"], "IMAGE_TOO_LARGE")
 
@@ -74,7 +80,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             "DetectLabels",
         )
         files = {"file": ("corrupt.jpg", io.BytesIO(b"corrupt bytes"), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "INVALID_IMAGE_DATA")
 
@@ -85,7 +93,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             "DetectLabels",
         )
         files = {"file": ("test.jpg", io.BytesIO(b"valid image bytes"), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 502)
         self.assertEqual(res.json()["detail"], "AWS_VISION_UNAVAILABLE")
 
@@ -116,7 +126,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
 
         files = {"file": ("chair.jpg", io.BytesIO(b"valid image data"), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
 
         self.assertEqual(res.status_code, 200)
         data = res.json()
@@ -156,7 +168,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
 
         files = {"file": ("desk.jpg", io.BytesIO(b"valid image data"), "image/jpeg")}
-        res = self.client.post("/api/v1/scan", files=files, headers={"Authorization": "Bearer token"})
+        res = self.client.post(
+            "/api/v1/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
 
         self.assertEqual(res.status_code, 200)
         data = res.json()

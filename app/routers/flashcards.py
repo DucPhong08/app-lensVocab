@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from pymongo.errors import DuplicateKeyError
 
@@ -18,6 +18,7 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 # Schemas
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ConfirmFlashcardRequest(BaseModel):
     keyword: str
@@ -49,6 +50,7 @@ class FlashcardItemResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @router.post("/flashcards/confirm", response_model=FlashcardItemResponse)
 async def confirm_flashcard(

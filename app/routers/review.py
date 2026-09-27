@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.config import settings
 from app.dependencies.auth import get_current_user
-from app.models.models import AccountTier, FlashcardStatus, GlobalFlashcard, ReviewLog, User, UserFlashcard
+from app.models.models import (
+    AccountTier,
+    FlashcardStatus,
+    GlobalFlashcard,
+    ReviewLog,
+    User,
+    UserFlashcard,
+)
 from app.services.sm2_service import compute_sm2, slice_review_queue
 from app.services.system_setting_service import get_system_settings
 
@@ -19,6 +25,7 @@ router = APIRouter()
 # ─────────────────────────────────────────────────────────────────────────────
 # Schemas
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 class ReviewCardResponse(BaseModel):
     user_flashcard_id: uuid.UUID
@@ -36,7 +43,9 @@ class ReviewCardResponse(BaseModel):
 
 
 class SubmitReviewRequest(BaseModel):
-    quality: int = Field(..., ge=0, le=5, description="Đánh giá từ 0 (quên hoàn toàn) đến 5 (nhớ hoàn hảo)")
+    quality: int = Field(
+        ..., ge=0, le=5, description="Đánh giá từ 0 (quên hoàn toàn) đến 5 (nhớ hoàn hảo)"
+    )
 
 
 class SubmitReviewResponse(BaseModel):
@@ -52,6 +61,7 @@ class SubmitReviewResponse(BaseModel):
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.get("/review/today", response_model=list[ReviewCardResponse])
 async def get_today_review_queue(
     current_user: User = Depends(get_current_user),
@@ -64,11 +74,15 @@ async def get_today_review_queue(
     """
     today = date.today()
 
-    due_cards = await UserFlashcard.find(
-        UserFlashcard.user_id == current_user.id,
-        UserFlashcard.status == FlashcardStatus.CONFIRMED,
-        UserFlashcard.next_review_date <= today,
-    ).sort("next_review_date").to_list()
+    due_cards = (
+        await UserFlashcard.find(
+            UserFlashcard.user_id == current_user.id,
+            UserFlashcard.status == FlashcardStatus.CONFIRMED,
+            UserFlashcard.next_review_date <= today,
+        )
+        .sort("next_review_date")
+        .to_list()
+    )
 
     # Cắt hàng đợi theo mục tiêu của user và trần quy định của gói cước
     sys_settings = await get_system_settings()
@@ -147,7 +161,7 @@ async def submit_card_review(
     card.efactor = sm2_res.efactor
     card.next_review_date = sm2_res.next_review_date
     card.total_reviews += 1
-    card.last_reviewed_at = datetime.now(timezone.utc)
+    card.last_reviewed_at = datetime.now(UTC)
     await card.save()
 
     # 3. Ghi log ôn tập (Audit & Analytics)
@@ -162,7 +176,11 @@ async def submit_card_review(
     )
     await log.insert()
 
-    msg = "Ôn tập thành công!" if body.quality >= 3 else "Đã ghi nhận, từ này sẽ xuất hiện lại vào ngày mai!"
+    msg = (
+        "Ôn tập thành công!"
+        if body.quality >= 3
+        else "Đã ghi nhận, từ này sẽ xuất hiện lại vào ngày mai!"
+    )
 
     return SubmitReviewResponse(
         user_flashcard_id=card.id,

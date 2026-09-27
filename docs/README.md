@@ -1,8 +1,8 @@
 # 📚 LensVocab Documentation Index (Mục Lục Tài Liệu)
 
-Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và cẩm nang vận hành của dự án **LensVocab Backend**. 
+Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và cẩm nang vận hành của dự án **LensVocab Backend**.
 
-> ⚠️ **Quy tắc vàng dành cho Kỹ sư & AI Agent:** 
+> ⚠️ **Quy tắc vàng dành cho Kỹ sư & AI Agent:**
 > Bất kỳ ai sửa đổi logic nghiệp vụ, schema, cấu hình, hoặc API endpoint **BẮT BUỘC** phải cập nhật lại tài liệu tương ứng trong thư mục này để người tiếp quản sau có thể nắm bắt chính xác hệ thống.
 
 ---

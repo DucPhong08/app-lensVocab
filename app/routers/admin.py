@@ -13,13 +13,27 @@ router = APIRouter()
 
 
 class UpdateSystemSettingRequest(BaseModel):
-    free_daily_quota: Optional[int] = Field(None, ge=1, le=1000, description="Hạn mức scan ngày của gói FREE")
-    premium_daily_quota: Optional[int] = Field(None, ge=1, le=10000, description="Hạn mức scan ngày của gói PREMIUM")
-    free_daily_review_cap: Optional[int] = Field(None, ge=1, le=500, description="Số từ ôn tối đa ngày gói FREE")
-    premium_daily_review_cap: Optional[int] = Field(None, ge=1, le=10000, description="Số từ ôn tối đa ngày gói PREMIUM")
-    vision_confidence_threshold: Optional[float] = Field(None, ge=0.1, le=1.0, description="Ngưỡng tin cậy của Rekognition")
-    semantic_similarity_threshold: Optional[float] = Field(None, ge=0.5, le=1.0, description="Ngưỡng tương đồng vector cache hit")
-    maintenance_mode: Optional[bool] = Field(None, description="Bật/tắt chế độ bảo trì toàn hệ thống")
+    free_daily_quota: Optional[int] = Field(
+        None, ge=1, le=1000, description="Hạn mức scan ngày của gói FREE"
+    )
+    premium_daily_quota: Optional[int] = Field(
+        None, ge=1, le=10000, description="Hạn mức scan ngày của gói PREMIUM"
+    )
+    free_daily_review_cap: Optional[int] = Field(
+        None, ge=1, le=500, description="Số từ ôn tối đa ngày gói FREE"
+    )
+    premium_daily_review_cap: Optional[int] = Field(
+        None, ge=1, le=10000, description="Số từ ôn tối đa ngày gói PREMIUM"
+    )
+    vision_confidence_threshold: Optional[float] = Field(
+        None, ge=0.1, le=1.0, description="Ngưỡng tin cậy của Rekognition"
+    )
+    semantic_similarity_threshold: Optional[float] = Field(
+        None, ge=0.5, le=1.0, description="Ngưỡng tương đồng vector cache hit"
+    )
+    maintenance_mode: Optional[bool] = Field(
+        None, description="Bật/tắt chế độ bảo trì toàn hệ thống"
+    )
 
 
 @router.get("/admin/settings", response_model=SystemSetting)

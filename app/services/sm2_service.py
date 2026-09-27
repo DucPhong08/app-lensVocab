@@ -9,9 +9,9 @@ T = TypeVar("T")
 
 @dataclass
 class SM2Result:
-    interval: int       # số ngày đến lần ôn tiếp theo
-    repetitions: int    # streak liên tiếp không quên
-    efactor: float      # hệ số dễ nhớ
+    interval: int  # số ngày đến lần ôn tiếp theo
+    repetitions: int  # streak liên tiếp không quên
+    efactor: float  # hệ số dễ nhớ
     next_review_date: date
 
 
@@ -49,7 +49,10 @@ def compute_sm2(
         today = date.today()
 
     # Cập nhật efactor theo công thức SM-2 gốc
-    new_efactor = efactor + (_EFACTOR_FORMULA_CONST - (5 - quality) * (_EFACTOR_Q_COEFF_1 + (5 - quality) * _EFACTOR_Q_COEFF_2))
+    new_efactor = efactor + (
+        _EFACTOR_FORMULA_CONST
+        - (5 - quality) * (_EFACTOR_Q_COEFF_1 + (5 - quality) * _EFACTOR_Q_COEFF_2)
+    )
     new_efactor = max(_MIN_EFACTOR, round(new_efactor, 4))
 
     if quality < 3:

@@ -1,6 +1,6 @@
 import unittest
+
 from app.services.degradation_service import (
-    DegradationResult,
     _normalize_threshold_percent,
 )
 

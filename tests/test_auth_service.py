@@ -1,6 +1,7 @@
 import unittest
 import uuid
 from datetime import timedelta
+
 from app.services.auth_service import (
     create_access_token,
     decode_access_token,

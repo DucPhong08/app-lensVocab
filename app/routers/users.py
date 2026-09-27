@@ -7,7 +7,11 @@ from pydantic import BaseModel, Field
 
 from app.dependencies.auth import get_current_user
 from app.models.models import AccountTier, User, UserPreferences
-from app.services.tier_service import TierPolicyViolation, get_tier_policy, validate_user_preferences
+from app.services.tier_service import (
+    TierPolicyViolation,
+    get_tier_policy,
+    validate_user_preferences,
+)
 
 router = APIRouter()
 
@@ -15,7 +19,9 @@ router = APIRouter()
 class UpdatePreferencesRequest(BaseModel):
     preferred_voice_id: Optional[str] = Field(None, description="Tên giọng đọc AWS Polly")
     voice_speed: Optional[float] = Field(None, description="Tốc độ đọc (0.75, 1.0, 1.25)")
-    daily_review_goal: Optional[int] = Field(None, ge=1, le=100, description="Mục tiêu số từ ôn tập mỗi ngày")
+    daily_review_goal: Optional[int] = Field(
+        None, ge=1, le=100, description="Mục tiêu số từ ôn tập mỗi ngày"
+    )
     target_language: Optional[str] = Field(None, description="Mã ngôn ngữ mục tiêu (mặc định 'vi')")
 
 

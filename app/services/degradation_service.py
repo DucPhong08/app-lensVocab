@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 
 
 class DegradationResult(str, Enum):
-    OK = "OK"                                  # Nhận diện tự tin cao
-    FALLBACK_CONTEXT = "FALLBACK"              # Confidence thấp → học từ bối cảnh xung quanh
+    OK = "OK"  # Nhận diện tự tin cao
+    FALLBACK_CONTEXT = "FALLBACK"  # Confidence thấp → học từ bối cảnh xung quanh
     UNRECOGNIZABLE = "AI_COULD_NOT_RECOGNIZE"  # Không nhận diện được
 
 

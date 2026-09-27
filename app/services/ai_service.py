@@ -59,6 +59,7 @@ class BedrockOutputError(Exception):
 # 1. AWS Rekognition: Nhận diện đồ vật trong ảnh
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class BoundingBox:
     width: float
@@ -177,14 +178,15 @@ async def detect_image_labels(image_bytes: bytes) -> VisionResult:
 # 2. AWS Bedrock (Amazon Nova): Sinh nội dung học tiếng Anh
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class GeneratedFlashcard:
     keyword: str
-    pronunciation: str           # /tʃer/
-    meaning_vi: str              # Nghĩa tiếng Việt
-    example_1: str               # Câu ví dụ 1
-    example_2: str               # Câu ví dụ 2
-    related_words: list[str]     # ["seat", "sofa", "stool"]
+    pronunciation: str  # /tʃer/
+    meaning_vi: str  # Nghĩa tiếng Việt
+    example_1: str  # Câu ví dụ 1
+    example_2: str  # Câu ví dụ 2
+    related_words: list[str]  # ["seat", "sofa", "stool"]
 
 
 # Role/Goal/Output viết bằng tiếng Anh để giảm token input (tiếng Việt có dấu tốn
@@ -278,6 +280,7 @@ async def generate_flashcard_content(keyword: str) -> GeneratedFlashcard:
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. AWS Bedrock (Amazon Titan Embeddings v2): Tạo vector ngữ nghĩa
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 @retry(
     reraise=True,

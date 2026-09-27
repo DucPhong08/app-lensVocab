@@ -23,23 +23,26 @@ logger = logging.getLogger(__name__)
 # Data Transfer Object
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @dataclass
 class FlashcardPayload:
     keyword: str
-    pronunciation: str | None           # /tʃer/
-    meaning_vi: str                     # cái ghế
-    example_1: str                      # I sit on a chair.
-    example_2: str                      # This chair is comfortable.
-    related_words: list[str]            # ["seat", "sofa", "stool"]
-    audio_base64: str | None            # MP3 audio từ AWS Polly
-    source: str                         # "redis" | "mongodb" | "bedrock"
-    is_draft: bool                      # True nếu từ Tầng 3 (chờ user xác nhận)
+    pronunciation: str | None  # /tʃer/
+    meaning_vi: str  # cái ghế
+    example_1: str  # I sit on a chair.
+    example_2: str  # This chair is comfortable.
+    related_words: list[str]  # ["seat", "sofa", "stool"]
+    audio_base64: str | None  # MP3 audio từ AWS Polly
+    source: str  # "redis" | "mongodb" | "bedrock"
+    is_draft: bool  # True nếu từ Tầng 3 (chờ user xác nhận)
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
 
 
-def _payload_from_document(doc: GlobalFlashcard, *, source: str, is_draft: bool) -> FlashcardPayload:
+def _payload_from_document(
+    doc: GlobalFlashcard, *, source: str, is_draft: bool
+) -> FlashcardPayload:
     return FlashcardPayload(
         keyword=doc.keyword,
         pronunciation=doc.pronunciation,
@@ -56,6 +59,7 @@ def _payload_from_document(doc: GlobalFlashcard, *, source: str, is_draft: bool)
 # ─────────────────────────────────────────────────────────────────────────────
 # Tầng 1 – Redis Exact Match
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 def _redis_key(keyword: str) -> str:
     return f"vocab:{keyword.lower().strip()}"
@@ -82,6 +86,7 @@ async def _save_to_redis(redis: aioredis.Redis, payload: FlashcardPayload) -> No
 # ─────────────────────────────────────────────────────────────────────────────
 # Tầng 2 – MongoDB Atlas (Exact Match rồi mới tới Vector Search)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def _find_exact_mongodb(keyword: str) -> GlobalFlashcard | None:
     """Exact match theo keyword — rẻ hơn vector search rất nhiều (không tốn Titan
@@ -111,11 +116,7 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
                 "id": "$_id",
             }
         },
-        {
-            "$match": {
-                "score": {"$gte": settings.SEMANTIC_SIMILARITY_THRESHOLD}
-            }
-        },
+        {"$match": {"score": {"$gte": settings.SEMANTIC_SIMILARITY_THRESHOLD}}},
     ]
 
     try:
@@ -140,6 +141,7 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
 # ─────────────────────────────────────────────────────────────────────────────
 # Public API – Multi-Tier Cache Resolver (Pure AWS)
 # ─────────────────────────────────────────────────────────────────────────────
+
 
 async def resolve_flashcard(
     keyword: str,
@@ -217,6 +219,7 @@ async def resolve_flashcard(
 # Confirm Draft – Lưu chính thức vào MongoDB Atlas sau khi user xác nhận
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 async def _persist_existing(existing: GlobalFlashcard, redis: aioredis.Redis) -> GlobalFlashcard:
     confirmed = _payload_from_document(existing, source="mongodb", is_draft=False)
     await _save_to_redis(redis, confirmed)
@@ -255,7 +258,9 @@ async def confirm_and_persist(
     except DuplicateKeyError:
         # Race: request khác confirm cùng keyword ở giữa lúc find_one() và
         # insert() của mình → người kia thắng, dùng bản ghi của họ.
-        logger.info("confirm_persist_race: keyword=%s bị insert trước bởi request khác", payload.keyword)
+        logger.info(
+            "confirm_persist_race: keyword=%s bị insert trước bởi request khác", payload.keyword
+        )
         winner = await GlobalFlashcard.find_one(GlobalFlashcard.keyword == payload.keyword)
         if winner is None:
             # Cực hiếm: bị insert rồi lại bị xóa ngay sau đó — không tự đoán,

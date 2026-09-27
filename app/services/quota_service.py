@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 
 import redis.asyncio as aioredis
 
@@ -18,11 +18,13 @@ def _quota_redis_key(user_id: str) -> str:
 
 class QuotaExceededError(Exception):
     """Raise ở service layer, router tự convert sang HTTP 403."""
+
     pass
 
 
 class MaintenanceModeError(Exception):
     """Raise khi hệ thống đang ở chế độ bảo trì."""
+
     pass
 
 
@@ -41,12 +43,12 @@ async def check_and_consume_quota(user: User, redis: aioredis.Redis) -> None:
     else:
         tier_daily_quota = sys_settings.free_daily_quota
 
-    today: date = datetime.now(timezone.utc).date()
+    today: date = datetime.now(UTC).date()
 
     if user.quota_reset_date != today:
         user.quota_reset_date = today
         user.daily_quota_left = tier_daily_quota
-        user.updated_at = datetime.now(timezone.utc)
+        user.updated_at = datetime.now(UTC)
         await user.save()
         await redis.delete(_quota_redis_key(str(user.id)))
 
@@ -70,7 +72,9 @@ async def check_and_consume_quota(user: User, redis: aioredis.Redis) -> None:
         raise QuotaExceededError("QUOTA_EXCEEDED")
 
     user.daily_quota_left = new_quota
-    user.updated_at = datetime.now(timezone.utc)
+    user.updated_at = datetime.now(UTC)
     await user.save()
 
-    logger.debug("quota_consumed user_id=%s remaining=%d tier=%s", user.id, new_quota, user.account_tier)
+    logger.debug(
+        "quota_consumed user_id=%s remaining=%d tier=%s", user.id, new_quota, user.account_tier
+    )

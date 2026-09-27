@@ -50,6 +50,7 @@ class UserMeResponse(BaseModel):
 # Endpoints
 # ─────────────────────────────────────────────────────────────────────────────
 
+
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest) -> TokenResponse:
     """Đăng ký tài khoản mới và trả về JWT Bearer token."""

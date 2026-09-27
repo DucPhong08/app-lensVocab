@@ -8,9 +8,9 @@ from starlette.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
 from app.main import app
-from app.models.models import AccountTier, SystemSetting, User, UserPreferences
+from app.models.models import AccountTier, User, UserPreferences
 from app.services.quota_service import MaintenanceModeError, check_and_consume_quota
-from app.services.system_setting_service import get_system_settings, update_system_settings
+from app.services.system_setting_service import update_system_settings
 from app.services.tier_service import TierPolicyViolation, validate_user_preferences
 
 
@@ -47,7 +47,9 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
     # ── 1. Unit Test Tier Policy Logic ───────────────────────────────────────
     def test_tier_policy_validation_free_tier(self):
         # Hợp lệ với Free
-        valid_pref = UserPreferences(preferred_voice_id="Joanna", voice_speed=1.0, daily_review_goal=15)
+        valid_pref = UserPreferences(
+            preferred_voice_id="Joanna", voice_speed=1.0, daily_review_goal=15
+        )
         validate_user_preferences(AccountTier.FREE, valid_pref)
 
         # Vi phạm giọng đọc
@@ -61,16 +63,22 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             validate_user_preferences(AccountTier.FREE, invalid_speed)
 
         # Vi phạm review goal
-        excessive_goal = UserPreferences(preferred_voice_id="Joanna", voice_speed=1.0, daily_review_goal=50)
+        excessive_goal = UserPreferences(
+            preferred_voice_id="Joanna", voice_speed=1.0, daily_review_goal=50
+        )
         with self.assertRaises(TierPolicyViolation):
             validate_user_preferences(AccountTier.FREE, excessive_goal)
 
     def test_tier_policy_validation_premium_tier(self):
         # Premium được phép dùng nhiều giọng và tốc độ
-        premium_pref = UserPreferences(preferred_voice_id="Amy", voice_speed=0.75, daily_review_goal=50)
+        premium_pref = UserPreferences(
+            preferred_voice_id="Amy", voice_speed=0.75, daily_review_goal=50
+        )
         validate_user_preferences(AccountTier.PREMIUM, premium_pref)
 
-        premium_pref_2 = UserPreferences(preferred_voice_id="Brian", voice_speed=1.25, daily_review_goal=100)
+        premium_pref_2 = UserPreferences(
+            preferred_voice_id="Brian", voice_speed=1.25, daily_review_goal=100
+        )
         validate_user_preferences(AccountTier.PREMIUM, premium_pref_2)
 
     # ── 2. Test User Preferences API ─────────────────────────────────────────
@@ -79,7 +87,9 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             return self.free_user
 
         app.dependency_overrides[get_current_user] = override_user
-        res = self.client.get("/api/v1/users/me/preferences", headers={"Authorization": "Bearer token"})
+        res = self.client.get(
+            "/api/v1/users/me/preferences", headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["account_tier"], "FREE")
@@ -124,7 +134,9 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_current_user] = override_user
 
         # GET admin settings
-        res_get = self.client.get("/api/v1/admin/settings", headers={"Authorization": "Bearer token"})
+        res_get = self.client.get(
+            "/api/v1/admin/settings", headers={"Authorization": "Bearer token"}
+        )
         self.assertEqual(res_get.status_code, 200)
         settings_data = res_get.json()
         self.assertIn("free_daily_quota", settings_data)
