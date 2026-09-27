@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.dependencies.auth import get_current_user
-from app.models.models import AccountTier, User
+from app.models.models import AccountTier, User, UserPreferences
 from app.services.auth_service import create_access_token, hash_password, verify_password
 
 router = APIRouter()
@@ -43,6 +43,7 @@ class UserMeResponse(BaseModel):
     account_tier: AccountTier
     daily_quota_left: int
     is_active: bool
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

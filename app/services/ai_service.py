@@ -315,16 +315,21 @@ async def create_titan_embedding(text: str) -> list[float]:
 _POLLY_UNSUPPORTED_ENGINE_ERROR = "EngineNotSupportedException"
 
 
-def _sync_synthesize_speech(text: str) -> str:
+def _sync_synthesize_speech(
+    text: str,
+    voice_id: str | None = None,
+    engine: str = "neural",
+) -> str:
     """Gọi AWS Polly chuyển từ vựng thành MP3 audio và encode base64."""
     client = _get_polly_client()
+    selected_voice = voice_id or settings.POLLY_VOICE_ID
 
     try:
         response = client.synthesize_speech(
             Text=text,
             OutputFormat=settings.POLLY_OUTPUT_FORMAT,
-            VoiceId=settings.POLLY_VOICE_ID,
-            Engine="neural",  # Giọng đọc AI tự nhiên chất lượng cao
+            VoiceId=selected_voice,
+            Engine=engine,
         )
     except ClientError as exc:
         # Chỉ fallback về standard khi đúng lỗi "voice này chưa hỗ trợ neural
@@ -338,7 +343,7 @@ def _sync_synthesize_speech(text: str) -> str:
         response = client.synthesize_speech(
             Text=text,
             OutputFormat=settings.POLLY_OUTPUT_FORMAT,
-            VoiceId=settings.POLLY_VOICE_ID,
+            VoiceId=selected_voice,
             Engine="standard",
         )
 
@@ -346,8 +351,12 @@ def _sync_synthesize_speech(text: str) -> str:
     return base64.b64encode(audio_stream).decode("utf-8")
 
 
-async def synthesize_speech(text: str) -> str:
-    return await asyncio.to_thread(_sync_synthesize_speech, text)
+async def synthesize_speech(
+    text: str,
+    voice_id: str | None = None,
+    engine: str = "neural",
+) -> str:
+    return await asyncio.to_thread(_sync_synthesize_speech, text, voice_id, engine)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -6,7 +6,7 @@ from datetime import date, datetime, timezone
 from typing import Annotated, Optional
 
 from beanie import Document, Indexed
-from pydantic import Field
+from pydantic import BaseModel, Field
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -33,6 +33,17 @@ class ReviewQuality(int, enum.Enum):
 
 
 # ─────────────────────────────────────────────────────────────────────────────
+# User Preferences (Tùy chọn học tập của người dùng)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class UserPreferences(BaseModel):
+    preferred_voice_id: str = "Joanna"       # Joanna, Matthew, Amy, Brian, Olivia
+    voice_speed: float = 1.0                  # 0.75, 1.0, 1.25
+    daily_review_goal: int = 15               # Mục tiêu số từ ôn mỗi ngày (Anti-demotivation)
+    target_language: str = "vi"               # Ngôn ngữ giải nghĩa
+
+
+# ─────────────────────────────────────────────────────────────────────────────
 # Constants — không import config vào model layer
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -51,6 +62,7 @@ class User(Document):
     hashed_password: str
     display_name: Optional[str] = None
     account_tier: AccountTier = AccountTier.FREE
+    preferences: UserPreferences = Field(default_factory=UserPreferences)
 
     daily_quota_left: int = _DEFAULT_FREE_QUOTA
     quota_reset_date: Optional[date] = None
@@ -135,3 +147,24 @@ class ReviewLog(Document):
     class Settings:
         name = "review_logs"
         indexes = ["user_id", "reviewed_at"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SystemSetting (Singleton cấu hình hệ thống động của Quản trị viên)
+# ─────────────────────────────────────────────────────────────────────────────
+
+class SystemSetting(Document):
+    id: str = Field(default="global_config")
+    free_daily_quota: int = 10
+    premium_daily_quota: int = 200
+    free_daily_review_cap: int = 15
+    premium_daily_review_cap: int = 9999
+    vision_confidence_threshold: float = 0.50
+    semantic_similarity_threshold: float = 0.85
+    maintenance_mode: bool = False
+
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+    class Settings:
+        name = "system_settings"
+

@@ -7,7 +7,7 @@ from app.redis_client import get_redis
 from app.services.ai_service import detect_image_labels
 from app.services.cache_service import FlashcardPayload, resolve_flashcard
 from app.services.degradation_service import DegradationResult, handle_vision_result
-from app.services.quota_service import QuotaExceededError, check_and_consume_quota
+from app.services.quota_service import MaintenanceModeError, QuotaExceededError, check_and_consume_quota
 
 router = APIRouter()
 
@@ -65,6 +65,11 @@ async def scan_image(
     # ── 0. Kiểm tra & Trừ Quota ngày của User ─────────────────────────────────
     try:
         await check_and_consume_quota(current_user, redis)
+    except MaintenanceModeError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MAINTENANCE_MODE",
+        )
     except QuotaExceededError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

@@ -9,8 +9,9 @@ from pydantic import BaseModel, Field
 
 from app.config import settings
 from app.dependencies.auth import get_current_user
-from app.models.models import FlashcardStatus, GlobalFlashcard, ReviewLog, User, UserFlashcard
+from app.models.models import AccountTier, FlashcardStatus, GlobalFlashcard, ReviewLog, User, UserFlashcard
 from app.services.sm2_service import compute_sm2, slice_review_queue
+from app.services.system_setting_service import get_system_settings
 
 router = APIRouter()
 
@@ -69,8 +70,15 @@ async def get_today_review_queue(
         UserFlashcard.next_review_date <= today,
     ).sort("next_review_date").to_list()
 
-    # Cắt hàng đợi tối đa 15 thẻ chống nản
-    sliced_cards = slice_review_queue(due_cards, cap=settings.REVIEW_DAILY_CAP)
+    # Cắt hàng đợi theo mục tiêu của user và trần quy định của gói cước
+    sys_settings = await get_system_settings()
+    user_goal = current_user.preferences.daily_review_goal if current_user.preferences else 15
+    if current_user.account_tier == AccountTier.PREMIUM:
+        effective_cap = min(user_goal, sys_settings.premium_daily_review_cap)
+    else:
+        effective_cap = min(user_goal, sys_settings.free_daily_review_cap)
+
+    sliced_cards = slice_review_queue(due_cards, cap=effective_cap)
     if not sliced_cards:
         return []
 

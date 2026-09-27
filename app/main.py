@@ -27,9 +27,11 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
-    from app.routers import auth, flashcards, review, vision
+    from app.routers import admin, auth, flashcards, review, users, vision
 
     app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
+    app.include_router(users.router, prefix="/api/v1", tags=["Users"])
+    app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
     app.include_router(vision.router, prefix="/api/v1", tags=["Vision"])
     app.include_router(flashcards.router, prefix="/api/v1", tags=["Flashcards"])
     app.include_router(review.router, prefix="/api/v1", tags=["Review"])

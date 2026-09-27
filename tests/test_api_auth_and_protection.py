@@ -41,6 +41,14 @@ class TestAPIAuthAndProtection(unittest.TestCase):
         res_rv = self.client.get("/api/v1/review/today")
         self.assertEqual(res_rv.status_code, 401)
 
+        # 5. /api/v1/users/me/preferences
+        res_pref = self.client.get("/api/v1/users/me/preferences")
+        self.assertEqual(res_pref.status_code, 401)
+
+        # 6. /api/v1/admin/settings
+        res_admin = self.client.get("/api/v1/admin/settings")
+        self.assertEqual(res_admin.status_code, 401)
+
     def test_authenticated_me_endpoint_with_override(self):
         async def override_get_current_user():
             return self.mock_user
