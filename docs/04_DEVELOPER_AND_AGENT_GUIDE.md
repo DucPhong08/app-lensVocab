@@ -4,33 +4,27 @@ Tài liệu này dành cho các kỹ sư backend và AI Agent tiếp quản dự
 
 ---
 
-## 1. Quy Trình Mở Rộng Hệ Thống
+## 1. Quy Trình Mở Rộng Hệ Thống (Separation of Concerns)
 
-### 1. Thêm một API Router Mới
-1. **Tạo file router trong thư mục `app/routers/`** (Ví dụ: `app/routers/analytics.py`).
-2. **Khai báo Schema Request/Response bằng Pydantic:**
-   * Bắt buộc dùng **100% `snake_case`**. Không dùng `camelCase`, không thêm `alias_generator`.
-3. **Bảo vệ endpoint:** Luôn dùng `Depends(get_current_user)` nếu endpoint yêu cầu định danh người dùng.
-4. **Đăng ký router trong `app/main.py`:**
-   ```python
-   from app.routers import analytics
-   app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
-   ```
+### 1. Kiến Trúc 4 Tầng Chuẩn (4-Layer Pattern)
+1. **`app/models/` (Database Entities):** Chứa Beanie Documents tách biệt theo domain (`user.py`, `flashcard.py`, `review.py`, `setting.py`). Không để lẫn Pydantic DTO hay API schemas vào đây.
+2. **`app/schemas/` (API Contracts / DTOs):** Chứa toàn bộ Pydantic Request & Response models (`auth.py`, `user.py`, `admin.py`, `flashcard.py`, `review.py`, `vision.py`).
+3. **`app/services/` (Pure Business Logic):** Chứa toàn bộ xử lý nghiệp vụ, tính toán thuật toán, truy vấn database, gọi AWS/Redis. Tên hàm ngắn gọn, súc tích (vd: `confirm_card`, `list_cards`, `get_today_queue`, `submit_review`).
+4. **`app/routers/` (Thin HTTP Controllers):** Chỉ làm nhiệm vụ nhận HTTP request, parse DTO, kiểm tra dependencies và ủy quyền cho Service tương ứng.
 
-### 2. Sửa Đổi Hoặc Mở Rộng Document Model (MongoDB / Beanie)
-1. **Thực hiện trong `app/models/models.py`:**
+### 2. Thêm một API Mới
+1. **Khai báo DTO Schema trong `app/schemas/`** (100% `snake_case`).
+2. **Viết nghiệp vụ trong `app/services/`** (thuần logic, testable độc lập).
+3. **Khai báo route trong `app/routers/`** (mỏng, ngắn gọn, gọi service).
+4. **Đăng ký router trong `app/main.py`** nếu là router mới.
+
+### 3. Sửa Đổi Hoặc Mở Rộng Document Model (MongoDB / Beanie)
+1. **Thực hiện trong file tương ứng thuộc `app/models/`:**
    * Document phải kế thừa từ `beanie.Document`.
-   * Cung cấp giá trị mặc định (`Field(default=...)` hoặc `Field(default_factory=...)`) cho trường mới để đảm bảo tương thích với các bản ghi cũ trong MongoDB.
+   * Cung cấp giá trị mặc định (`Field(default=...)` hoặc `Field(default_factory=...)`) cho trường mới.
+   * Re-export qua `app/models/__init__.py`.
 2. **Đăng ký Document trong Lifespan:**
    * Mở file `app/bootstrap.py` và thêm tên Model mới vào danh sách `document_models` của `init_beanie`.
-3. **Nếu có Index tìm kiếm:**
-   * Index đơn: Dùng chuỗi hoặc `Annotated[str, Indexed(...)]`.
-   * Index phức hợp (Compound Index): Bắt buộc dùng `IndexModel` của PyMongo:
-     ```python
-     IndexModel([("field_a", ASCENDING), ("field_b", ASCENDING)], unique=True)
-     ```
-
-### 3. Tích Hợp Thêm Dịch Vụ AWS Mới
 1. Khởi tạo client Boto3 trong `app/services/ai_service.py` với cấu hình singleton `_get_boto3_session()` và `_BOTO_CONFIG`.
 2. **Bắt buộc Non-blocking:** Luôn bọc hàm gọi AWS bằng `await asyncio.to_thread(_sync_call, ...)`.
 3. **Quản lý ngoại lệ:** Bắt `ClientError` và chuyển đổi thành lỗi HTTP phù hợp (400 hoặc 502/503), không để văng lỗi 500 ra ngoài router.

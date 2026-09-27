@@ -52,3 +52,48 @@ def decode_access_token(token: str) -> str | None:
         return user_id_str
     except JWTError:
         return None
+
+
+class EmailAlreadyRegisteredError(Exception):
+    pass
+
+
+class InvalidCredentialsError(Exception):
+    pass
+
+
+class UserInactiveError(Exception):
+    pass
+
+
+async def register_user(email: str, password: str, display_name: str | None = None):
+    """Đăng ký tài khoản người dùng mới vào database."""
+    from app.models.user import User
+
+    normalized_email = email.strip().lower()
+    existing_user = await User.find_one(User.email == normalized_email)
+    if existing_user is not None:
+        raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED")
+
+    user = User(
+        email=normalized_email,
+        hashed_password=hash_password(password),
+        display_name=display_name,
+    )
+    await user.insert()
+    return user
+
+
+async def authenticate_user(email: str, password: str):
+    """Xác thực người dùng bằng email và mật khẩu."""
+    from app.models.user import User
+
+    normalized_email = email.strip().lower()
+    user = await User.find_one(User.email == normalized_email)
+    if user is None or not verify_password(password, user.hashed_password):
+        raise InvalidCredentialsError("INVALID_CREDENTIALS")
+
+    if not user.is_active:
+        raise UserInactiveError("USER_INACTIVE")
+
+    return user

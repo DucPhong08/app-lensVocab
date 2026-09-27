@@ -1,116 +1,32 @@
 from __future__ import annotations
 
-import uuid
-from typing import Optional
-
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
 
 from app.dependencies.auth import get_current_user
-from app.models.models import AccountTier, User, UserPreferences
-from app.services.auth_service import create_access_token, hash_password, verify_password
+from app.models.user import User
+from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserMeResponse
+from app.services.auth_service import (
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
+    UserInactiveError,
+    authenticate_user,
+    create_access_token,
+    register_user,
+)
 
 router = APIRouter()
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Schemas
-# ─────────────────────────────────────────────────────────────────────────────
-
-_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
-
-
-class RegisterRequest(BaseModel):
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "email": "user@example.com",
-                "password": "password123",
-                "display_name": "Nguyen Van A",
-            }
-        }
-    }
-
-    email: str = Field(
-        ...,
-        pattern=_EMAIL_PATTERN,
-        description="Email người dùng (vd: user@example.com)",
-        examples=["user@example.com"],
-    )
-    password: str = Field(
-        ...,
-        min_length=6,
-        description="Mật khẩu tối thiểu 6 ký tự",
-        examples=["password123"],
-    )
-    display_name: str | None = Field(
-        None,
-        description="Tên hiển thị người dùng",
-        examples=["Nguyen Van A"],
-    )
-
-
-class LoginRequest(BaseModel):
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "email": "user@example.com",
-                "password": "password123",
-            }
-        }
-    }
-
-    email: str = Field(
-        ...,
-        pattern=_EMAIL_PATTERN,
-        description="Email người dùng (vd: user@example.com)",
-        examples=["user@example.com"],
-    )
-    password: str = Field(
-        ...,
-        description="Mật khẩu",
-        examples=["password123"],
-    )
-
-
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-class UserMeResponse(BaseModel):
-    id: uuid.UUID
-    email: str
-    display_name: Optional[str]
-    account_tier: AccountTier
-    daily_quota_left: int
-    is_active: bool
-    preferences: UserPreferences = Field(default_factory=UserPreferences)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Endpoints
-# ─────────────────────────────────────────────────────────────────────────────
 
 
 @router.post("/auth/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(body: RegisterRequest) -> TokenResponse:
     """Đăng ký tài khoản mới và trả về JWT Bearer token."""
-    normalized_email = body.email.strip().lower()
-
-    existing_user = await User.find_one(User.email == normalized_email)
-    if existing_user is not None:
+    try:
+        user = await register_user(body.email, body.password, body.display_name)
+    except EmailAlreadyRegisteredError:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="EMAIL_ALREADY_REGISTERED",
         )
-
-    user = User(
-        email=normalized_email,
-        hashed_password=hash_password(body.password),
-        display_name=body.display_name,
-    )
-    await user.insert()
 
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)
@@ -119,16 +35,14 @@ async def register(body: RegisterRequest) -> TokenResponse:
 @router.post("/auth/login", response_model=TokenResponse)
 async def login(body: LoginRequest) -> TokenResponse:
     """Đăng nhập bằng email/password và trả về JWT Bearer token."""
-    normalized_email = body.email.strip().lower()
-
-    user = await User.find_one(User.email == normalized_email)
-    if user is None or not verify_password(body.password, user.hashed_password):
+    try:
+        user = await authenticate_user(body.email, body.password)
+    except InvalidCredentialsError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="INVALID_CREDENTIALS",
         )
-
-    if not user.is_active:
+    except UserInactiveError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="USER_INACTIVE",
@@ -148,4 +62,5 @@ async def get_me(current_user: User = Depends(get_current_user)) -> UserMeRespon
         account_tier=current_user.account_tier,
         daily_quota_left=current_user.daily_quota_left,
         is_active=current_user.is_active,
+        preferences=current_user.preferences,
     )

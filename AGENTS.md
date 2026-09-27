@@ -8,15 +8,11 @@ Chào đồng nghiệp Agent! Đây là cẩm nang tóm tắt nhanh giúp bạn 
 
 | Thư mục / File | Trách nhiệm chính |
 | :--- | :--- |
-| [`app/main.py`](file:///home/phong/Môn%20học/app-LensVocab/app/main.py) | Entrypoint FastAPI app, đăng ký router (`auth`, `users`, `admin`, `vision`, `flashcards`, `review`), lifespan quản lý kết nối MongoDB & Redis. |
-| [`app/models/models.py`](file:///home/phong/Môn%20học/app-LensVocab/app/models/models.py) | Định nghĩa toàn bộ Beanie Documents: `User`, `GlobalFlashcard`, `UserFlashcard`, `ReviewLog`, `SystemSetting` & `UserPreferences`. |
-| [`app/routers/vision.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/vision.py) | Xử lý `POST /vision/scan`: Nhận diện ảnh qua Rekognition, BoundingBox, fallback Bedrock, Multi-tier cache. |
-| [`app/routers/review.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/review.py) | Xử lý hàng đợi ôn bài `GET /review/today` & chấm điểm `POST /review/{user_flashcard_id}` theo thuật toán SM-2. |
-| [`app/routers/users.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/users.py) | API tùy chỉnh sở thích học tập (`GET/PATCH /users/me/preferences`). |
-| [`app/routers/admin.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/admin.py) | API cấu hình hệ thống động (`GET/PATCH /admin/settings`). |
-| [`app/services/cache_service.py`](file:///home/phong/Môn%20học/app-LensVocab/app/services/cache_service.py) | Multi-tier cache: Redis exact -> Mongo exact -> Atlas Vector Search -> Bedrock + Polly. |
-| [`app/services/quota_service.py`](file:///home/phong/Môn%20học/app-LensVocab/app/services/quota_service.py) | Kiểm soát hạn mức scan bằng Redis Atomic `SET NX` và `DECR`, chốt chặn bảo trì. |
-| [`app/services/tier_service.py`](file:///home/phong/Môn%20học/app-LensVocab/app/services/tier_service.py) | Định nghĩa chính sách tính năng cho gói `FREE` và `PREMIUM`. |
+| [`app/main.py`](file:///home/phong/Môn%20học/app-LensVocab/app/main.py) | Entrypoint FastAPI app, đăng ký router, lifespan quản lý MongoDB & Redis. |
+| [`app/models/`](file:///home/phong/Môn%20học/app-LensVocab/app/models) | **Database Entities (Beanie Documents):** `user.py`, `flashcard.py`, `review.py`, `setting.py`. |
+| [`app/schemas/`](file:///home/phong/Môn%20học/app-LensVocab/app/schemas) | **API Contracts (Pydantic DTOs):** Request/Response validation (`auth`, `user`, `admin`, `flashcard`, `review`, `vision`). |
+| [`app/services/`](file:///home/phong/Môn%20học/app-LensVocab/app/services) | **Pure Business Logic:** `auth_service`, `flashcard_service`, `review_service`, `vision_service`, `ai_service`, `cache_service`, `quota_service`, `sm2_service`, `tier_service`. |
+| [`app/routers/`](file:///home/phong/Môn%20học/app-LensVocab/app/routers) | **Thin HTTP Controllers:** Nhận request, xác thực dependency, ủy quyền cho Service và trả response. |
 | [`docs/`](file:///home/phong/Môn%20học/app-LensVocab/docs) | **Bộ tài liệu kỹ thuật chi tiết.** Đọc trước khi sửa đổi, cập nhật sau khi hoàn thành. |
 
 ---
