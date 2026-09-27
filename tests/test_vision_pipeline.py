@@ -281,6 +281,118 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn("event: done", res.text)
         self.assertIn('"cái ghế"', res.text)
 
+    # ── 6. Test Multi-object Detection & Admin Ceiling ────────────────────────
+    @patch("app.routers.vision.get_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    def test_max_detected_objects_capped_by_admin_ceiling(
+        self, mock_detect, mock_get_flashcard, mock_get_sys_settings
+    ):
+        """User cài đặt 7 nhưng Admin đặt trần 5 -> Không được vượt quá 5."""
+        from app.models.models import SystemSetting
+
+        mock_get_sys_settings.return_value = SystemSetting.model_construct(max_detected_objects=5)
+        self.mock_user.preferences.max_detected_objects = 7
+
+        labels = [
+            RekognitionLabel(
+                name=f"Obj{i}",
+                confidence=90.0 - i,
+                categories=["General"],
+                aliases=[],
+                parents=[],
+            )
+            for i in range(1, 9)
+        ]
+        mock_detect.return_value = VisionResult(
+            labels=labels[:5],
+            top_label="Obj1",
+            top_confidence=89.0,
+            top_bounding_box=BoundingBox(0.2, 0.2, 0.1, 0.1),
+            top_categories=["General"],
+            top_aliases=[],
+            top_parents=[],
+            raw_description="multiple objects",
+        )
+        mock_get_flashcard.return_value = FlashcardPayload(
+            keyword="obj1",
+            pronunciation="/obj1/",
+            meaning_vi="vật thể 1",
+            example_1="Example 1",
+            example_2="Example 2",
+            related_words=[],
+            audio_base64=None,
+            source="bedrock",
+            is_draft=False,
+        )
+
+        files = {"file": ("room.jpg", io.BytesIO(b"image bytes"), "image/jpeg")}
+        res = self.client.post(
+            "/vision/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
+        self.assertEqual(res.status_code, 200)
+
+        # Xác nhận detect_image_labels bị chốt cứng ở 5 vì trần của admin
+        mock_detect.assert_called_once_with(b"image bytes", max_labels=5)
+        data = res.json()
+        self.assertEqual(len(data["detected_objects"]), 5)
+        self.assertEqual(data["detected_objects"][0]["keyword"], "Obj1")
+
+    @patch("app.routers.vision.get_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    def test_max_detected_objects_user_lower_than_admin(
+        self, mock_detect, mock_get_flashcard, mock_get_sys_settings
+    ):
+        """User cài đặt 3 trong khi Admin cho phép 5 -> Lấy theo 3 của User."""
+        from app.models.models import SystemSetting
+
+        mock_get_sys_settings.return_value = SystemSetting.model_construct(max_detected_objects=5)
+        self.mock_user.preferences.max_detected_objects = 3
+
+        labels = [
+            RekognitionLabel(
+                name=f"Obj{i}",
+                confidence=90.0 - i,
+                categories=["General"],
+                aliases=[],
+                parents=[],
+            )
+            for i in range(1, 4)
+        ]
+        mock_detect.return_value = VisionResult(
+            labels=labels,
+            top_label="Obj1",
+            top_confidence=89.0,
+            top_bounding_box=None,
+            top_categories=["General"],
+            top_aliases=[],
+            top_parents=[],
+            raw_description="3 objects",
+        )
+        mock_get_flashcard.return_value = FlashcardPayload(
+            keyword="obj1",
+            pronunciation="/obj1/",
+            meaning_vi="vật thể 1",
+            example_1="Example 1",
+            example_2="Example 2",
+            related_words=[],
+            audio_base64=None,
+            source="bedrock",
+            is_draft=False,
+        )
+
+        files = {"file": ("room.jpg", io.BytesIO(b"image bytes"), "image/jpeg")}
+        res = self.client.post(
+            "/vision/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
+        self.assertEqual(res.status_code, 200)
+
+        # Xác nhận detect_image_labels được gọi với 3 theo lựa chọn của user
+        mock_detect.assert_called_once_with(b"image bytes", max_labels=3)
+        data = res.json()
+        self.assertEqual(len(data["detected_objects"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

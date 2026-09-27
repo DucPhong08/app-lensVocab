@@ -34,6 +34,9 @@ class UpdateSystemSettingRequest(BaseModel):
     maintenance_mode: Optional[bool] = Field(
         None, description="Bật/tắt chế độ bảo trì toàn hệ thống"
     )
+    max_detected_objects: Optional[int] = Field(
+        None, ge=1, le=10, description="Trần tối đa số lượng vật thể quét trong 1 ảnh (1-10)"
+    )
 
 
 @router.get("/admin/settings", response_model=SystemSetting)

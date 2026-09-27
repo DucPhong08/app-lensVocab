@@ -111,12 +111,15 @@ class VisionResult:
     raw_description: str
 
 
-def _sync_detect_labels(image_bytes: bytes) -> VisionResult:
+def _sync_detect_labels(
+    image_bytes: bytes, max_labels: int = settings.REKOGNITION_MAX_LABELS
+) -> VisionResult:
     client = _get_rekognition_client()
+    safe_max = max(1, min(max_labels, 50))
     try:
         response = client.detect_labels(
             Image={"Bytes": image_bytes},
-            MaxLabels=settings.REKOGNITION_MAX_LABELS,
+            MaxLabels=safe_max,
             MinConfidence=settings.REKOGNITION_MIN_CONFIDENCE,
         )
     except ClientError as exc:
@@ -167,15 +170,17 @@ def _sync_detect_labels(image_bytes: bytes) -> VisionResult:
     #    học từ thực thể (Chair, Bottle) thay vì chất liệu/bối cảnh (Wood, Indoors).
     # 2. Trong cùng nhóm, sắp xếp theo confidence giảm dần.
     parsed_labels.sort(key=lambda x: (x.has_instance, x.confidence), reverse=True)
+    parsed_labels = parsed_labels[:safe_max]
     top = parsed_labels[0]
     raw_desc = ", ".join(lbl.name for lbl in parsed_labels)
 
     logger.info(
-        "rekognition_parsed top=%s (confidence=%.1f%%, has_box=%s, categories=%s)",
+        "rekognition_parsed top=%s (confidence=%.1f%%, has_box=%s, categories=%s, total=%d)",
         top.name,
         top.confidence,
         bool(top.bounding_box),
         top.categories,
+        len(parsed_labels),
     )
 
     return VisionResult(
@@ -190,8 +195,10 @@ def _sync_detect_labels(image_bytes: bytes) -> VisionResult:
     )
 
 
-async def detect_image_labels(image_bytes: bytes) -> VisionResult:
-    return await asyncio.to_thread(_sync_detect_labels, image_bytes)
+async def detect_image_labels(
+    image_bytes: bytes, max_labels: int = settings.REKOGNITION_MAX_LABELS
+) -> VisionResult:
+    return await asyncio.to_thread(_sync_detect_labels, image_bytes, max_labels)
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -23,6 +23,9 @@ class UpdatePreferencesRequest(BaseModel):
         None, ge=1, le=100, description="Mục tiêu số từ ôn tập mỗi ngày"
     )
     target_language: Optional[str] = Field(None, description="Mã ngôn ngữ mục tiêu (mặc định 'vi')")
+    max_detected_objects: Optional[int] = Field(
+        None, ge=1, le=10, description="Số vật thể tối đa muốn phát hiện trong 1 ảnh (1-10)"
+    )
 
 
 class UserPreferencesResponse(BaseModel):

@@ -137,15 +137,43 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
         settings_data = res_get.json()
         self.assertIn("free_daily_quota", settings_data)
         self.assertIn("maintenance_mode", settings_data)
+        self.assertIn("max_detected_objects", settings_data)
 
-        # PATCH admin settings
+        # PATCH admin settings (cập nhật trần phát hiện vật thể)
         res_patch = self.client.patch(
             "/admin/settings",
-            json={"free_daily_quota": 25, "maintenance_mode": False},
+            json={"free_daily_quota": 25, "maintenance_mode": False, "max_detected_objects": 6},
             headers={"Authorization": "Bearer token"},
         )
         self.assertEqual(res_patch.status_code, 200)
         self.assertEqual(res_patch.json()["free_daily_quota"], 25)
+        self.assertEqual(res_patch.json()["max_detected_objects"], 6)
+
+    def test_patch_preferences_max_detected_objects(self):
+        async def override_user():
+            return self.free_user
+
+        app.dependency_overrides[get_current_user] = override_user
+        res = self.client.patch(
+            "/users/me/preferences",
+            json={"max_detected_objects": 7},
+            headers={"Authorization": "Bearer token"},
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["preferences"]["max_detected_objects"], 7)
+
+    def test_patch_preferences_invalid_max_detected_objects(self):
+        async def override_user():
+            return self.free_user
+
+        app.dependency_overrides[get_current_user] = override_user
+        # Quá giới hạn le=10
+        res = self.client.patch(
+            "/users/me/preferences",
+            json={"max_detected_objects": 15},
+            headers={"Authorization": "Bearer token"},
+        )
+        self.assertEqual(res.status_code, 422)
 
     # ── 4. Test Maintenance Mode In Quota Service ────────────────────────────
     async def test_quota_service_maintenance_mode(self):

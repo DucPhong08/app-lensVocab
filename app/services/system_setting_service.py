@@ -22,6 +22,7 @@ def _create_default_system_setting() -> SystemSetting:
         vision_confidence_threshold=settings.VISION_CONFIDENCE_THRESHOLD,
         semantic_similarity_threshold=settings.SEMANTIC_SIMILARITY_THRESHOLD,
         maintenance_mode=False,
+        max_detected_objects=settings.REKOGNITION_MAX_LABELS,
         updated_at=datetime.now(UTC),
     )
 
@@ -68,6 +69,7 @@ async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:
         "vision_confidence_threshold",
         "semantic_similarity_threshold",
         "maintenance_mode",
+        "max_detected_objects",
     }
 
     for key, value in updates.items():

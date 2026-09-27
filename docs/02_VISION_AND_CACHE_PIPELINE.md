@@ -56,13 +56,19 @@ Client              FastAPI [/scan]             Redis               AWS Rekognit
 - **Kích thước file:** Giới hạn tối đa **5MB** (`MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024`). Đây là ngưỡng tối đa của AWS Rekognition khi truyền bytes trực tiếp. Nếu vượt quá, trả về `HTTP 413 REQUEST ENTITY TOO LARGE`.
 - **Định dạng file:** Chỉ chấp nhận `image/jpeg` và `image/png`. Nếu gửi định dạng khác, trả về `HTTP 400 BAD REQUEST` (`INVALID_IMAGE_FORMAT`).
 
-### Bước 4: Nhận Diện Thực Thể (AWS Rekognition)
+### Bước 4: Nhận Diện Thực Thể (AWS Rekognition) & Trần Cấu Hình Động
 
+- **Kiểm soát số lượng vật thể nhận diện (User Preferences vs Admin Ceiling):**
+  - Hệ thống tính toán trần hiệu dụng:
+    $$\text{effective\_max} = \min(\text{user.preferences.max\_detected\_objects}, \text{system\_setting.max\_detected\_objects})$$
+  - Ví dụ: Người dùng cấu hình muốn phát hiện 7 vật thể trong 1 ảnh, nhưng Quản trị viên (Admin) chỉ đặt trần tối đa là 5, hệ thống sẽ chốt cứng ở 5 (`effective_max = 5`), không cho phép người dùng vượt qua trần của hệ thống.
+  - Giá trị này được truyền trực tiếp vào tham số `MaxLabels=effective_max` khi gọi AWS Rekognition.
 - Gọi API `detect_labels` qua luồng phụ non-blocking (`asyncio.to_thread`).
-- **Thuật toán Smart Selection:**
+- **Thuật toán Smart Selection & Multi-object (Google Lens Style):**
   - Lọc qua danh sách các nhãn trả về.
   - Ưu tiên các nhãn có tọa độ cụ thể (`Instances` với `BoundingBox`) để gán cho đồ vật người dùng đang hướng ống kính vào.
   - Bóc tách các siêu dữ liệu hỗ trợ: `Categories`, `Aliases`, `Parents`.
+  - Trả về danh sách `detected_objects: list[DetectedObjectItem]` (mỗi item gồm `keyword`, `confidence`, `bounding_box`, `categories`, `aliases`, `parents`) để Frontend vẽ đa khung viền lên ảnh.
 
 ### Bước 5: Cơ Chế Cứu Nguy (Graceful Degradation)
 

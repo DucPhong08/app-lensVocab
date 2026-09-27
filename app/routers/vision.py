@@ -24,6 +24,7 @@ from app.services.quota_service import (
     QuotaExceededError,
     check_and_consume_quota,
 )
+from app.services.system_setting_service import get_system_settings
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +41,15 @@ class BoundingBoxSchema(BaseModel):
     top: float  # Tọa độ Y góc trên bên trái (tỉ lệ 0.0 - 1.0)
 
 
+class DetectedObjectItem(BaseModel):
+    keyword: str  # Tên nhãn tiếng Anh (ví dụ "chair", "laptop")
+    confidence: float  # Độ tin cậy (0 - 100)
+    bounding_box: BoundingBoxSchema | None = None  # Khung bao quanh vật thể (Google Lens style)
+    categories: list[str] = []
+    aliases: list[str] = []
+    parents: list[str] = []
+
+
 class ScanResponse(BaseModel):
     status: str  # "OK" | "FALLBACK" | "AI_COULD_NOT_RECOGNIZE"
     keyword: str | None = None  # Từ tiếng Anh: "chair"
@@ -54,6 +64,7 @@ class ScanResponse(BaseModel):
     bounding_box: BoundingBoxSchema | None = (
         None  # Tọa độ để Frontend vẽ khung viền (Google Lens style)
     )
+    detected_objects: list[DetectedObjectItem] = []  # Toàn bộ danh sách vật thể phát hiện được
     audio_base64: str | None = None  # MP3 audio từ AWS Polly
     confidence: float = 0.0
     source: str | None = None  # "redis" | "mongodb" | "bedrock"
@@ -124,9 +135,19 @@ async def scan_image(
             detail="IMAGE_TOO_LARGE",
         )
 
-    # ── 1. AWS Rekognition: Nhận diện đồ vật + BoundingBox + Metadata ──────────
+    # ── 1. Tính toán giới hạn số vật thể (User preference vs Admin ceiling) ───
+    sys_settings = await get_system_settings()
+    user_max = (
+        current_user.preferences.max_detected_objects
+        if current_user.preferences and hasattr(current_user.preferences, "max_detected_objects")
+        else 5
+    )
+    admin_max = getattr(sys_settings, "max_detected_objects", 5)
+    effective_max = min(user_max, admin_max)
+
+    # ── 2. AWS Rekognition: Nhận diện đồ vật + BoundingBox + Metadata ──────────
     try:
-        vision_result = await detect_image_labels(image_bytes)
+        vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)
     except ClientError as exc:
         error_code = exc.response.get("Error", {}).get("Code", "")
         if error_code in ("InvalidImageFormatException", "ImageTooLargeException"):
@@ -145,7 +166,27 @@ async def scan_image(
             detail=f"AWS_CONNECTION_OR_CREDENTIALS_ERROR: {exc.__class__.__name__}",
         )
 
-    # ── 2. Graceful Degradation ───────────────────────────────────────────────
+    # Danh sách tất cả vật thể Rekognition phát hiện được (capped bởi effective_max)
+    detected_objects = [
+        DetectedObjectItem(
+            keyword=lbl.name,
+            confidence=round(lbl.confidence, 2),
+            bounding_box=BoundingBoxSchema(
+                width=lbl.bounding_box.width,
+                height=lbl.bounding_box.height,
+                left=lbl.bounding_box.left,
+                top=lbl.bounding_box.top,
+            )
+            if lbl.bounding_box
+            else None,
+            categories=lbl.categories,
+            aliases=lbl.aliases,
+            parents=lbl.parents,
+        )
+        for lbl in vision_result.labels[:effective_max]
+    ]
+
+    # ── 3. Graceful Degradation ───────────────────────────────────────────────
     analysis = await evaluate_vision_result(
         keyword=vision_result.top_label,
         confidence=vision_result.top_confidence,
@@ -158,9 +199,10 @@ async def scan_image(
             keyword=None,
             confidence=analysis.confidence,
             message=analysis.message,
+            detected_objects=detected_objects,
         )
 
-    # ── 3. Cache Resolver: Exact Match (keyword chính + Parents/Aliases) ───────
+    # ── 4. Cache Resolver: Exact Match (keyword chính + Parents/Aliases) ───────
     candidate_keywords = vision_result.top_parents + vision_result.top_aliases
     try:
         payload: FlashcardPayload = await get_flashcard(
@@ -203,6 +245,7 @@ async def scan_image(
         categories=vision_result.top_categories,
         parents=vision_result.top_parents,
         bounding_box=box_schema,
+        detected_objects=detected_objects,
         audio_base64=payload.audio_base64,
         confidence=analysis.confidence,
         source=payload.source,
@@ -272,6 +315,17 @@ async def scan_image_stream(
         )
 
     async def event_generator() -> AsyncGenerator[str, None]:
+        # 0. Giới hạn số vật thể nhận diện (User setting vs Admin ceiling)
+        sys_settings = await get_system_settings()
+        user_max = (
+            current_user.preferences.max_detected_objects
+            if current_user.preferences
+            and hasattr(current_user.preferences, "max_detected_objects")
+            else 5
+        )
+        admin_max = getattr(sys_settings, "max_detected_objects", 5)
+        effective_max = min(user_max, admin_max)
+
         # 1. Báo bắt đầu quét ảnh
         yield _format_sse(
             "status",
@@ -279,7 +333,7 @@ async def scan_image_stream(
         )
 
         try:
-            vision_result = await detect_image_labels(image_bytes)
+            vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)
         except ClientError as exc:
             error_code = exc.response.get("Error", {}).get("Code", "")
             if error_code in ("InvalidImageFormatException", "ImageTooLargeException"):
@@ -311,6 +365,25 @@ async def scan_image_stream(
                 "top": vision_result.top_bounding_box.top,
             }
 
+        detected_objects = [
+            {
+                "keyword": lbl.name,
+                "confidence": round(lbl.confidence, 2),
+                "bounding_box": {
+                    "width": lbl.bounding_box.width,
+                    "height": lbl.bounding_box.height,
+                    "left": lbl.bounding_box.left,
+                    "top": lbl.bounding_box.top,
+                }
+                if lbl.bounding_box
+                else None,
+                "categories": lbl.categories,
+                "aliases": lbl.aliases,
+                "parents": lbl.parents,
+            }
+            for lbl in vision_result.labels[:effective_max]
+        ]
+
         # Bắn ngay event nhận diện nhãn + Bounding Box để Frontend vẽ khung trước mắt người dùng
         yield _format_sse(
             "vision_detected",
@@ -323,6 +396,7 @@ async def scan_image_stream(
                 "categories": vision_result.top_categories,
                 "aliases": vision_result.top_aliases,
                 "parents": vision_result.top_parents,
+                "detected_objects": detected_objects,
                 "message": analysis.message,
             },
         )
