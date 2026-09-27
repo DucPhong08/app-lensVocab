@@ -1,11 +1,13 @@
 import json
+import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
-from botocore.exceptions import ClientError
+from botocore.exceptions import BotoCoreError, ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
+from redis.exceptions import RedisError
 
 from app.dependencies.auth import get_current_user
 from app.models.models import User
@@ -22,6 +24,8 @@ from app.services.quota_service import (
     QuotaExceededError,
     check_and_consume_quota,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -94,6 +98,12 @@ async def scan_image(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="QUOTA_EXCEEDED",
         )
+    except RedisError as exc:
+        logger.error("redis_connection_failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="REDIS_CONNECTION_FAILED",
+        )
 
     if file.content_type and file.content_type.lower() not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -128,6 +138,12 @@ async def scan_image(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="AWS_VISION_UNAVAILABLE",
         )
+    except BotoCoreError as exc:
+        logger.error("aws_rekognition_failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AWS_CONNECTION_OR_CREDENTIALS_ERROR: {exc.__class__.__name__}",
+        )
 
     # ── 2. Graceful Degradation ───────────────────────────────────────────────
     analysis = await evaluate_vision_result(
@@ -146,11 +162,24 @@ async def scan_image(
 
     # ── 3. Cache Resolver: Exact Match (keyword chính + Parents/Aliases) ───────
     candidate_keywords = vision_result.top_parents + vision_result.top_aliases
-    payload: FlashcardPayload = await get_flashcard(
-        keyword=analysis.keyword,
-        redis=redis,
-        candidate_keywords=candidate_keywords,
-    )
+    try:
+        payload: FlashcardPayload = await get_flashcard(
+            keyword=analysis.keyword,
+            redis=redis,
+            candidate_keywords=candidate_keywords,
+        )
+    except (ClientError, BotoCoreError) as exc:
+        logger.error("aws_generation_failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"AWS_BEDROCK_OR_POLLY_ERROR: {exc.__class__.__name__}",
+        )
+    except RedisError as exc:
+        logger.error("redis_cache_failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="REDIS_CONNECTION_FAILED",
+        )
 
     # Map BoundingBox sang Schema nếu có
     box_schema: BoundingBoxSchema | None = None
@@ -216,6 +245,12 @@ async def scan_image_stream(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="QUOTA_EXCEEDED",
         )
+    except RedisError as exc:
+        logger.error("redis_stream_quota_failed: %s", exc)
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="REDIS_CONNECTION_FAILED",
+        )
 
     if file.content_type and file.content_type.lower() not in ALLOWED_CONTENT_TYPES:
         raise HTTPException(
@@ -251,6 +286,13 @@ async def scan_image_stream(
                 yield _format_sse("error", {"step": "ERROR", "detail": "INVALID_IMAGE_DATA"})
                 return
             yield _format_sse("error", {"step": "ERROR", "detail": "AWS_VISION_UNAVAILABLE"})
+            return
+        except BotoCoreError as exc:
+            logger.error("aws_stream_rekognition_failed: %s", exc)
+            yield _format_sse(
+                "error",
+                {"step": "ERROR", "detail": f"AWS_ERROR: {exc.__class__.__name__}"},
+            )
             return
 
         # 2. Xử lý độ tin cậy và suy thoái
