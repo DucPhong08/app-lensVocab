@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.review import ReviewCardResponse, SubmitReviewRequest, SubmitReviewResponse
-from app.services.review_service import FlashcardNotFoundError, get_today_queue, submit_review
+from app.services.review_service import FlashcardNotFoundError, fetch_today_queue, submit_review
 
 router = APIRouter()
 
@@ -22,7 +22,7 @@ async def get_today_review_queue(
       - next_review_date <= hôm nay.
       - Giới hạn tối đa theo mục tiêu cá nhân và trần gói cước (Anti-demotivation cap).
     """
-    return await get_today_queue(current_user)
+    return await fetch_today_queue(current_user)
 
 
 @router.post("/review/{user_flashcard_id}", response_model=SubmitReviewResponse)

@@ -2,7 +2,10 @@ from __future__ import annotations
 
 from app.config import settings
 from app.database import get_motor_client
-from app.models.models import GlobalFlashcard, ReviewLog, SystemSetting, User, UserFlashcard
+from app.models.flashcard import GlobalFlashcard, UserFlashcard
+from app.models.review import ReviewLog
+from app.models.setting import SystemSetting
+from app.models.user import User
 
 
 async def setup_beanie() -> None:

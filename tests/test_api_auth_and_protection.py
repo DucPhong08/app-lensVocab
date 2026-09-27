@@ -5,7 +5,7 @@ from starlette.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
 from app.main import app
-from app.models.models import AccountTier, User
+from app.models.user import AccountTier, User
 
 
 class TestAPIAuthAndProtection(unittest.TestCase):

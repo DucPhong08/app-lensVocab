@@ -8,7 +8,7 @@ from app.models.review import ReviewLog
 from app.models.user import AccountTier, User
 from app.schemas.review import ReviewCardResponse, SubmitReviewResponse
 from app.services.sm2_service import compute_sm2, slice_review_queue
-from app.services.system_setting_service import get_system_settings
+from app.services.system_setting_service import fetch_system_settings
 
 
 class FlashcardNotFoundError(Exception):
@@ -17,7 +17,7 @@ class FlashcardNotFoundError(Exception):
     pass
 
 
-async def get_today_queue(current_user: User) -> list[ReviewCardResponse]:
+async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
     """Lấy danh sách các thẻ cần ôn hôm nay theo thuật toán SM-2 và trần chống nản."""
     today = date.today()
 
@@ -34,7 +34,7 @@ async def get_today_queue(current_user: User) -> list[ReviewCardResponse]:
     )
 
     # Cắt hàng đợi theo mục tiêu của user và trần quy định của gói cước
-    sys_settings = await get_system_settings()
+    sys_settings = await fetch_system_settings()
     user_goal = current_user.preferences.daily_review_goal if current_user.preferences else 15
     if current_user.account_tier == AccountTier.PREMIUM:
         effective_cap = min(user_goal, sys_settings.premium_daily_review_cap)

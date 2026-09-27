@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from app.config import settings
-from app.models.models import SystemSetting
+from app.models.setting import SystemSetting
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,7 @@ def _create_default_system_setting() -> SystemSetting:
     )
 
 
-async def get_system_settings() -> SystemSetting:
+async def fetch_system_settings() -> SystemSetting:
     """Lấy cài đặt hệ thống động từ MongoDB Atlas (Singleton 'global_config').
 
     Fallback an toàn về giá trị từ .env/Settings nếu MongoDB chưa khởi tạo
@@ -59,7 +59,7 @@ async def get_system_settings() -> SystemSetting:
 async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:
     """Cập nhật cài đặt hệ thống của Quản trị viên."""
     global _cached_setting
-    doc = await get_system_settings()
+    doc = await fetch_system_settings()
 
     allowed_fields = {
         "free_daily_quota",

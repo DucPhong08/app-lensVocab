@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from app.models.user import User, UserPreferences
 from app.schemas.user import UpdatePreferencesRequest, UserPreferencesResponse
-from app.services.tier_service import get_tier_policy, validate_user_preferences
+from app.services.tier_service import resolve_tier_policy, validate_user_preferences
 
 
-def get_preferences(current_user: User) -> UserPreferencesResponse:
+def read_preferences(current_user: User) -> UserPreferencesResponse:
     """Lấy thiết lập học tập cá nhân và danh sách quyền lợi theo gói cước."""
-    policy = get_tier_policy(current_user.account_tier)
+    policy = resolve_tier_policy(current_user.account_tier)
     return UserPreferencesResponse(
         preferences=current_user.preferences,
         account_tier=current_user.account_tier,
@@ -34,7 +34,7 @@ async def update_preferences(
     current_user.preferences = new_pref
     await current_user.save()
 
-    policy = get_tier_policy(current_user.account_tier)
+    policy = resolve_tier_policy(current_user.account_tier)
     return UserPreferencesResponse(
         preferences=current_user.preferences,
         account_tier=current_user.account_tier,

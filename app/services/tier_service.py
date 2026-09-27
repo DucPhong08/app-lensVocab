@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.models.models import AccountTier, UserPreferences
+from app.models.user import AccountTier, UserPreferences
 
 TIER_POLICIES: dict[AccountTier, dict[str, Any]] = {
     AccountTier.FREE: {
@@ -26,12 +26,12 @@ class TierPolicyViolation(ValueError):
     pass
 
 
-def get_tier_policy(tier: AccountTier) -> dict[str, Any]:
+def resolve_tier_policy(tier: AccountTier) -> dict[str, Any]:
     return TIER_POLICIES.get(tier, TIER_POLICIES[AccountTier.FREE])
 
 
 def validate_user_preferences(tier: AccountTier, preferences: UserPreferences) -> None:
-    policy = get_tier_policy(tier)
+    policy = resolve_tier_policy(tier)
 
     if preferences.preferred_voice_id not in policy["allowed_voices"]:
         allowed = ", ".join(policy["allowed_voices"])

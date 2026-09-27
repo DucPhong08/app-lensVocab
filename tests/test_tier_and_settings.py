@@ -8,7 +8,7 @@ from starlette.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
 from app.main import app
-from app.models.models import AccountTier, User, UserPreferences
+from app.models.user import AccountTier, User, UserPreferences
 from app.services.quota_service import MaintenanceModeError, check_and_consume_quota
 from app.services.system_setting_service import update_system_settings
 from app.services.tier_service import TierPolicyViolation, validate_user_preferences

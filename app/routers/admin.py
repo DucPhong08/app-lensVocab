@@ -6,7 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.models.setting import SystemSetting
 from app.models.user import User
 from app.schemas.admin import UpdateSystemSettingRequest
-from app.services.system_setting_service import get_system_settings, update_system_settings
+from app.services.system_setting_service import fetch_system_settings, update_system_settings
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ async def get_admin_settings(
     current_user: User = Depends(get_current_user),
 ) -> SystemSetting:
     """Lấy cấu hình hệ thống động hiện tại."""
-    return await get_system_settings()
+    return await fetch_system_settings()
 
 
 @router.patch("/admin/settings", response_model=SystemSetting)

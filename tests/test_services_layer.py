@@ -11,7 +11,7 @@ from app.schemas.flashcard import ConfirmFlashcardRequest
 from app.schemas.user import UpdatePreferencesRequest
 from app.services.flashcard_service import confirm_card
 from app.services.review_service import FlashcardNotFoundError, submit_review
-from app.services.user_service import get_preferences, update_preferences
+from app.services.user_service import read_preferences, update_preferences
 
 
 class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
@@ -30,7 +30,7 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
 
     # ── 1. User Service Tests ────────────────────────────────────────────────
     def test_get_preferences_returns_tier_policy(self):
-        res = get_preferences(self.mock_user)
+        res = read_preferences(self.mock_user)
         self.assertEqual(res.account_tier, AccountTier.FREE)
         self.assertEqual(res.allowed_voices, ["Joanna"])
         self.assertFalse(res.allow_neural_voice)

@@ -13,7 +13,7 @@ from app.services.ai_service import detect_image_labels
 from app.services.cache_service import FlashcardPayload, get_flashcard, stream_flashcard
 from app.services.degradation_service import DegradationResult, evaluate_vision_result
 from app.services.quota_service import check_and_consume_quota
-from app.services.system_setting_service import get_system_settings
+from app.services.system_setting_service import fetch_system_settings
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -26,9 +26,9 @@ def _format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def get_effective_max_objects(user: User) -> int:
+async def resolve_max_objects(user: User) -> int:
     """Tính toán số vật thể tối đa dựa trên cài đặt User và trần của Admin."""
-    sys_settings = await get_system_settings()
+    sys_settings = await fetch_system_settings()
     user_max = (
         user.preferences.max_detected_objects
         if user.preferences and hasattr(user.preferences, "max_detected_objects")
@@ -53,7 +53,7 @@ async def execute_vision_scan(
     """
     await check_and_consume_quota(current_user, redis)
 
-    effective_max = await get_effective_max_objects(current_user)
+    effective_max = await resolve_max_objects(current_user)
 
     vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)
 
@@ -135,7 +135,7 @@ async def execute_vision_stream(
     redis: Redis,
 ) -> AsyncGenerator[str, None]:
     """Generator phát sự kiện Server-Sent Events (SSE) theo tiến trình nhận diện."""
-    effective_max = await get_effective_max_objects(current_user)
+    effective_max = await resolve_max_objects(current_user)
 
     # 1. Báo bắt đầu quét ảnh
     yield _format_sse(

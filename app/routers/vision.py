@@ -9,7 +9,7 @@ from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 
 from app.dependencies.auth import get_current_user
-from app.models.models import User
+from app.models.user import User
 from app.redis_client import get_redis
 from app.schemas.vision import BoundingBoxSchema, DetectedObjectItem, ScanResponse
 from app.services.ai_service import detect_image_labels
@@ -24,7 +24,7 @@ from app.services.quota_service import (
     QuotaExceededError,
     check_and_consume_quota,
 )
-from app.services.system_setting_service import get_system_settings
+from app.services.system_setting_service import fetch_system_settings
 
 logger = logging.getLogger(__name__)
 
@@ -98,7 +98,7 @@ async def scan_image(
         )
 
     # ── 1. Tính toán giới hạn số vật thể (User preference vs Admin ceiling) ───
-    sys_settings = await get_system_settings()
+    sys_settings = await fetch_system_settings()
     user_max = (
         current_user.preferences.max_detected_objects
         if current_user.preferences and hasattr(current_user.preferences, "max_detected_objects")
@@ -278,7 +278,7 @@ async def scan_image_stream(
 
     async def event_generator() -> AsyncGenerator[str, None]:
         # 0. Giới hạn số vật thể nhận diện (User setting vs Admin ceiling)
-        sys_settings = await get_system_settings()
+        sys_settings = await fetch_system_settings()
         user_max = (
             current_user.preferences.max_detected_objects
             if current_user.preferences

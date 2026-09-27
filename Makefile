@@ -1,4 +1,10 @@
-.PHONY: dev test lint format
+.PHONY: dev test lint format install
+
+# Tạo môi trường ảo và cài toàn bộ thư viện từ requirements.txt
+install:
+	python3 -m venv .venv
+	.venv/bin/pip install --upgrade pip
+	.venv/bin/pip install -r requirements.txt
 
 # Khởi động server API với hot-reload
 dev:

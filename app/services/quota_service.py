@@ -6,8 +6,8 @@ from datetime import UTC, date, datetime
 import redis.asyncio as aioredis
 
 from app.config import settings
-from app.models.models import AccountTier, User
-from app.services.system_setting_service import get_system_settings
+from app.models.user import AccountTier, User
+from app.services.system_setting_service import fetch_system_settings
 
 logger = logging.getLogger(__name__)
 
@@ -33,7 +33,7 @@ async def check_and_consume_quota(user: User, redis: aioredis.Redis) -> None:
     Kiểm tra bảo trì và khấu trừ hạn mức scan theo gói cước (Free & Premium).
     Lấy quota động từ SystemSetting (Admin có thể tăng giảm mà không cần restart).
     """
-    sys_settings = await get_system_settings()
+    sys_settings = await fetch_system_settings()
     if sys_settings.maintenance_mode:
         raise MaintenanceModeError("MAINTENANCE_MODE")
 

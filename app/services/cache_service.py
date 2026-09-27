@@ -11,7 +11,7 @@ import redis.asyncio as aioredis
 from pymongo.errors import DuplicateKeyError, OperationFailure
 
 from app.config import settings
-from app.models.models import GlobalFlashcard
+from app.models.flashcard import GlobalFlashcard
 from app.services.ai_service import (
     create_titan_embedding,
     generate_flashcard_content,

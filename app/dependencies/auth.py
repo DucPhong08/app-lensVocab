@@ -5,7 +5,7 @@ import uuid
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
-from app.models.models import User
+from app.models.user import User
 from app.services.auth_service import decode_access_token
 
 security = HTTPBearer(auto_error=False)

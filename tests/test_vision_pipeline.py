@@ -10,7 +10,7 @@ from starlette.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
 from app.main import app
-from app.models.models import AccountTier, User, UserPreferences
+from app.models.user import AccountTier, User, UserPreferences
 from app.services.ai_service import BoundingBox, RekognitionLabel, VisionResult
 from app.services.cache_service import FlashcardPayload
 
@@ -282,14 +282,14 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"cái ghế"', res.text)
 
     # ── 6. Test Multi-object Detection & Admin Ceiling ────────────────────────
-    @patch("app.routers.vision.get_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
     @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_capped_by_admin_ceiling(
         self, mock_detect, mock_get_flashcard, mock_get_sys_settings
     ):
         """User cài đặt 7 nhưng Admin đặt trần 5 -> Không được vượt quá 5."""
-        from app.models.models import SystemSetting
+        from app.models.setting import SystemSetting
 
         mock_get_sys_settings.return_value = SystemSetting.model_construct(max_detected_objects=5)
         self.mock_user.preferences.max_detected_objects = 7
@@ -338,14 +338,14 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data["detected_objects"]), 5)
         self.assertEqual(data["detected_objects"][0]["keyword"], "Obj1")
 
-    @patch("app.routers.vision.get_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
     @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_user_lower_than_admin(
         self, mock_detect, mock_get_flashcard, mock_get_sys_settings
     ):
         """User cài đặt 3 trong khi Admin cho phép 5 -> Lấy theo 3 của User."""
-        from app.models.models import SystemSetting
+        from app.models.setting import SystemSetting
 
         mock_get_sys_settings.return_value = SystemSetting.model_construct(max_detected_objects=5)
         self.mock_user.preferences.max_detected_objects = 3

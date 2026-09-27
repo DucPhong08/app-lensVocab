@@ -6,7 +6,7 @@ from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.user import UpdatePreferencesRequest, UserPreferencesResponse
 from app.services.tier_service import TierPolicyViolation
-from app.services.user_service import get_preferences, update_preferences
+from app.services.user_service import read_preferences, update_preferences
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ async def get_my_preferences(
     current_user: User = Depends(get_current_user),
 ) -> UserPreferencesResponse:
     """Lấy thiết lập học tập cá nhân và danh sách quyền lợi theo gói cước."""
-    return get_preferences(current_user)
+    return read_preferences(current_user)
 
 
 @router.patch("/users/me/preferences", response_model=UserPreferencesResponse)
