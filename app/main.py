@@ -25,16 +25,19 @@ def create_app() -> FastAPI:
         version="1.0.0",
         description="Backend cho ứng dụng học tiếng Anh LensVocab",
         lifespan=lifespan,
+        docs_url="/api",
+        openapi_url="/api/openapi.json",
+        swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     )
 
     from app.routers import admin, auth, flashcards, review, users, vision
 
-    app.include_router(auth.router, prefix="/api/v1", tags=["Auth"])
-    app.include_router(users.router, prefix="/api/v1", tags=["Users"])
-    app.include_router(admin.router, prefix="/api/v1", tags=["Admin"])
-    app.include_router(vision.router, prefix="/api/v1", tags=["Vision"])
-    app.include_router(flashcards.router, prefix="/api/v1", tags=["Flashcards"])
-    app.include_router(review.router, prefix="/api/v1", tags=["Review"])
+    app.include_router(auth.router, tags=["Auth"])
+    app.include_router(users.router, tags=["Users"])
+    app.include_router(admin.router, tags=["Admin"])
+    app.include_router(vision.router, prefix="/vision", tags=["Vision"])
+    app.include_router(flashcards.router, tags=["Flashcards"])
+    app.include_router(review.router, tags=["Review"])
 
     return app
 

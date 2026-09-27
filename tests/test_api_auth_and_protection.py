@@ -26,28 +26,28 @@ class TestAPIAuthAndProtection(unittest.TestCase):
         app.dependency_overrides.clear()
 
     def test_unauthenticated_endpoints_return_401(self):
-        # 1. /api/v1/auth/me
-        res_me = self.client.get("/api/v1/auth/me")
+        # 1. /auth/me
+        res_me = self.client.get("/auth/me")
         self.assertEqual(res_me.status_code, 401)
 
-        # 2. /api/v1/scan
-        res_scan = self.client.post("/api/v1/scan")
+        # 2. /vision/scan
+        res_scan = self.client.post("/vision/scan")
         self.assertEqual(res_scan.status_code, 401)
 
-        # 3. /api/v1/flashcards
-        res_fc = self.client.get("/api/v1/flashcards")
+        # 3. /flashcards
+        res_fc = self.client.get("/flashcards")
         self.assertEqual(res_fc.status_code, 401)
 
-        # 4. /api/v1/review/today
-        res_rv = self.client.get("/api/v1/review/today")
+        # 4. /review/today
+        res_rv = self.client.get("/review/today")
         self.assertEqual(res_rv.status_code, 401)
 
-        # 5. /api/v1/users/me/preferences
-        res_pref = self.client.get("/api/v1/users/me/preferences")
+        # 5. /users/me/preferences
+        res_pref = self.client.get("/users/me/preferences")
         self.assertEqual(res_pref.status_code, 401)
 
-        # 6. /api/v1/admin/settings
-        res_admin = self.client.get("/api/v1/admin/settings")
+        # 6. /admin/settings
+        res_admin = self.client.get("/admin/settings")
         self.assertEqual(res_admin.status_code, 401)
 
     def test_authenticated_me_endpoint_with_override(self):
@@ -57,7 +57,7 @@ class TestAPIAuthAndProtection(unittest.TestCase):
         app.dependency_overrides[get_current_user] = override_get_current_user
 
         headers = {"Authorization": "Bearer mock_token"}
-        res = self.client.get("/api/v1/auth/me", headers=headers)
+        res = self.client.get("/auth/me", headers=headers)
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["email"], "test_user@example.com")

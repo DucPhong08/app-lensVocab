@@ -104,11 +104,17 @@ mongosh "mongodb://root:root@localhost:27017/?authSource=admin" create_vector_in
 
 ### 6. Khởi động API Server
 
+Cách nhanh nhất (khuyên dùng):
+```bash
+make dev
+```
+
+Hoặc chạy lệnh trực tiếp bằng uvicorn:
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-- **Swagger UI Documentation:** [http://localhost:8000/docs](http://localhost:8000/docs)
+- **Swagger UI Documentation:** [http://localhost:8000/api](http://localhost:8000/api)
 - **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
 
 ---
@@ -118,30 +124,27 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 Dự án bao gồm bộ 30 unit tests tự động, mock toàn bộ dịch vụ ngoài (AWS, MongoDB, Redis):
 
 ```bash
-# Kích hoạt venv
-source .venv/bin/activate
-
-# Chạy test suite
-python -m unittest discover tests
+make test
+# hoặc: .venv/bin/python -m unittest discover tests
 ```
 
 ---
 
 ## 📋 Danh sách API Endpoints chính
 
-| Nhóm          | Method  | Endpoint                       | Mô tả                                                            |
-| :------------ | :------ | :----------------------------- | :--------------------------------------------------------------- |
-| **Auth**      | `POST`  | `/api/v1/auth/register`        | Đăng ký tài khoản mới & nhận JWT Token                           |
-|               | `POST`  | `/api/v1/auth/login`           | Đăng nhập tài khoản                                              |
-|               | `GET`   | `/api/v1/auth/me`              | Lấy thông tin cá nhân & hạn mức scan còn lại                     |
-| **Users**     | `GET`   | `/api/v1/users/me/preferences` | Xem sở thích học tập & quyền lợi gói cước                        |
-|               | `PATCH` | `/api/v1/users/me/preferences` | Cập nhật giọng đọc Polly, tốc độ phát âm, mục tiêu học           |
-| **Vision**    | `POST`  | `/api/v1/scan`                 | Tải ảnh lên nhận diện đồ vật, trích xuất BoundingBox & Flashcard |
-| **Flashcard** | `POST`  | `/api/v1/flashcards/confirm`   | Xác nhận lưu thẻ vào bộ sưu tập cá nhân                          |
-|               | `GET`   | `/api/v1/flashcards`           | Xem danh sách thẻ từ vựng đã lưu                                 |
-| **Review**    | `GET`   | `/api/v1/review/today`         | Lấy hàng đợi từ cần ôn tập hôm nay (SM-2)                        |
-|               | `POST`  | `/api/v1/review/submit`        | Gửi đánh giá kết quả ôn tập (chấm điểm chất lượng 0 - 5)         |
-| **Admin**     | `GET`   | `/api/v1/admin/settings`       | Xem cấu hình động của hệ thống                                   |
-|               | `PATCH` | `/api/v1/admin/settings`       | Cập nhật hạn mức quota, ngưỡng AI, bật/tắt bảo trì               |
+| Nhóm          | Method  | Endpoint                 | Mô tả                                                            |
+| :------------ | :------ | :----------------------- | :--------------------------------------------------------------- |
+| **Auth**      | `POST`  | `/auth/register`         | Đăng ký tài khoản mới & nhận JWT Token                           |
+|               | `POST`  | `/auth/login`            | Đăng nhập tài khoản                                              |
+|               | `GET`   | `/auth/me`               | Lấy thông tin cá nhân & hạn mức scan còn lại                     |
+| **Users**     | `GET`   | `/users/me/preferences`  | Xem sở thích học tập & quyền lợi gói cước                        |
+|               | `PATCH` | `/users/me/preferences`  | Cập nhật giọng đọc Polly, tốc độ phát âm, mục tiêu học           |
+| **Vision**    | `POST`  | `/vision/scan`           | Tải ảnh lên nhận diện đồ vật, trích xuất BoundingBox & Flashcard |
+| **Flashcard** | `POST`  | `/flashcards/confirm`    | Xác nhận lưu thẻ vào bộ sưu tập cá nhân                          |
+|               | `GET`   | `/flashcards`            | Xem danh sách thẻ từ vựng đã lưu                                 |
+| **Review**    | `GET`   | `/review/today`          | Lấy hàng đợi từ cần ôn tập hôm nay (SM-2)                        |
+|               | `POST`  | `/review/submit`         | Gửi đánh giá kết quả ôn tập (chấm điểm chất lượng 0 - 5)         |
+| **Admin**     | `GET`   | `/admin/settings`        | Xem cấu hình động của hệ thống                                   |
+|               | `PATCH` | `/admin/settings`        | Cập nhật hạn mức quota, ngưỡng AI, bật/tắt bảo trì               |
 
 ---

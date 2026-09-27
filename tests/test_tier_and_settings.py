@@ -87,9 +87,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             return self.free_user
 
         app.dependency_overrides[get_current_user] = override_user
-        res = self.client.get(
-            "/api/v1/users/me/preferences", headers={"Authorization": "Bearer token"}
-        )
+        res = self.client.get("/users/me/preferences", headers={"Authorization": "Bearer token"})
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["account_tier"], "FREE")
@@ -103,7 +101,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
 
         app.dependency_overrides[get_current_user] = override_user
         res = self.client.patch(
-            "/api/v1/users/me/preferences",
+            "/users/me/preferences",
             json={"preferred_voice_id": "Matthew"},
             headers={"Authorization": "Bearer token"},
         )
@@ -116,7 +114,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
 
         app.dependency_overrides[get_current_user] = override_user
         res = self.client.patch(
-            "/api/v1/users/me/preferences",
+            "/users/me/preferences",
             json={"preferred_voice_id": "Matthew", "voice_speed": 1.25, "daily_review_goal": 30},
             headers={"Authorization": "Bearer token"},
         )
@@ -134,9 +132,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_current_user] = override_user
 
         # GET admin settings
-        res_get = self.client.get(
-            "/api/v1/admin/settings", headers={"Authorization": "Bearer token"}
-        )
+        res_get = self.client.get("/admin/settings", headers={"Authorization": "Bearer token"})
         self.assertEqual(res_get.status_code, 200)
         settings_data = res_get.json()
         self.assertIn("free_daily_quota", settings_data)
@@ -144,7 +140,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
 
         # PATCH admin settings
         res_patch = self.client.patch(
-            "/api/v1/admin/settings",
+            "/admin/settings",
             json={"free_daily_quota": 25, "maintenance_mode": False},
             headers={"Authorization": "Bearer token"},
         )
