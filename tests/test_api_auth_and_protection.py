@@ -70,6 +70,18 @@ class TestAPIAuthAndProtection(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json(), {"status": "ok"})
 
+    def test_standardized_error_response_format(self):
+        res = self.client.get("/auth/me")  # Unauthenticated -> 401
+        self.assertEqual(res.status_code, 401)
+        body = res.json()
+        self.assertIn("status_code", body)
+        self.assertIn("message", body)
+        self.assertIn("error", body)
+        self.assertIn("data", body)
+        self.assertEqual(body["status_code"], 401)
+        self.assertEqual(body["message"], "NOT_AUTHENTICATED")
+        self.assertIsNone(body["data"])
+
 
 if __name__ == "__main__":
     unittest.main()

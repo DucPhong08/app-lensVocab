@@ -1,14 +1,20 @@
 from __future__ import annotations
 
+import logging
 import time
 from contextlib import asynccontextmanager
+from http import HTTPStatus
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 from app.bootstrap import setup_beanie
 from app.database import close_motor_client, get_motor_client
 from app.redis_client import close_redis_pool, get_redis_pool
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -51,6 +57,52 @@ def create_app() -> FastAPI:
     @app.get("/health", tags=["Health"])
     async def health_check():
         return {"status": "ok"}
+
+    @app.exception_handler(HTTPException)
+    async def http_exception_handler(request: Request, exc: HTTPException):
+        error_phrase = (
+            HTTPStatus(exc.status_code).phrase
+            if exc.status_code in HTTPStatus._value2member_map_
+            else "HTTP_ERROR"
+        )
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "status_code": exc.status_code,
+                "message": exc.detail if isinstance(exc.detail, str) else str(exc.detail),
+                "error": error_phrase,
+                "data": None,
+                "detail": exc.detail,
+            },
+            headers=exc.headers,
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        return JSONResponse(
+            status_code=422,
+            content={
+                "status_code": 422,
+                "message": "VALIDATION_ERROR",
+                "error": "Unprocessable Entity",
+                "data": exc.errors(),
+                "detail": exc.errors(),
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        logger.exception("unhandled_server_exception: %s", exc)
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status_code": 500,
+                "message": "INTERNAL_SERVER_ERROR",
+                "error": exc.__class__.__name__,
+                "data": None,
+                "detail": "INTERNAL_SERVER_ERROR",
+            },
+        )
 
     from app.routers import admin, auth, flashcards, review, users, vision
 
