@@ -13,10 +13,10 @@ from app.redis_client import get_redis
 from app.services.ai_service import detect_image_labels
 from app.services.cache_service import (
     FlashcardPayload,
-    resolve_flashcard,
-    resolve_flashcard_progressive,
+    get_flashcard,
+    stream_flashcard,
 )
-from app.services.degradation_service import DegradationResult, handle_vision_result
+from app.services.degradation_service import DegradationResult, evaluate_vision_result
 from app.services.quota_service import (
     MaintenanceModeError,
     QuotaExceededError,
@@ -130,7 +130,7 @@ async def scan_image(
         )
 
     # ── 2. Graceful Degradation ───────────────────────────────────────────────
-    analysis = await handle_vision_result(
+    analysis = await evaluate_vision_result(
         keyword=vision_result.top_label,
         confidence=vision_result.top_confidence,
         raw_description=vision_result.raw_description,
@@ -146,7 +146,7 @@ async def scan_image(
 
     # ── 3. Cache Resolver: Exact Match (keyword chính + Parents/Aliases) ───────
     candidate_keywords = vision_result.top_parents + vision_result.top_aliases
-    payload: FlashcardPayload = await resolve_flashcard(
+    payload: FlashcardPayload = await get_flashcard(
         keyword=analysis.keyword,
         redis=redis,
         candidate_keywords=candidate_keywords,
@@ -254,7 +254,7 @@ async def scan_image_stream(
             return
 
         # 2. Xử lý độ tin cậy và suy thoái
-        analysis = await handle_vision_result(
+        analysis = await evaluate_vision_result(
             keyword=vision_result.top_label,
             confidence=vision_result.top_confidence,
             raw_description=vision_result.raw_description,
@@ -291,7 +291,7 @@ async def scan_image_stream(
 
         # 3. Stream tiến trình tra cứu Cache & Bedrock/Polly
         candidate_keywords = vision_result.top_parents + vision_result.top_aliases
-        async for chunk in resolve_flashcard_progressive(
+        async for chunk in stream_flashcard(
             analysis.keyword, redis, candidate_keywords=candidate_keywords
         ):
             yield _format_sse(chunk["event"], chunk["data"])

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 _cached_setting: SystemSetting | None = None
 
 
-def _build_default_system_setting() -> SystemSetting:
+def _create_default_system_setting() -> SystemSetting:
     return SystemSetting.model_construct(
         id="global_config",
         free_daily_quota=settings.FREE_DAILY_QUOTA,
@@ -41,7 +41,7 @@ async def get_system_settings() -> SystemSetting:
             return doc
 
         # Tạo singleton record lần đầu trong DB
-        doc = _build_default_system_setting()
+        doc = _create_default_system_setting()
         try:
             await doc.insert()
             _cached_setting = doc
@@ -52,7 +52,7 @@ async def get_system_settings() -> SystemSetting:
         logger.debug("system_setting_fetch_fallback_to_default: %s", exc)
         if _cached_setting is not None:
             return _cached_setting
-        return _build_default_system_setting()
+        return _create_default_system_setting()
 
 
 async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:

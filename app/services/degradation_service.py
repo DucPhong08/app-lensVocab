@@ -42,7 +42,7 @@ def _normalize_threshold_percent(threshold: float) -> float:
     return max(0.0, min(100.0, threshold_percent))
 
 
-async def handle_vision_result(
+async def evaluate_vision_result(
     keyword: str | None,
     confidence: float,
     raw_description: str,

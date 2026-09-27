@@ -100,9 +100,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.json()["detail"], "AWS_VISION_UNAVAILABLE")
 
     # ── 3. High Confidence Success Scan ──────────────────────────────────────
-    @patch("app.routers.vision.resolve_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
-    def test_high_confidence_scan_success(self, mock_detect, mock_resolve):
+    def test_high_confidence_scan_success(self, mock_detect, mock_get_flashcard):
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Chair", 95.0, ["Furniture"], ["Seat"], [])],
             top_label="Chair",
@@ -113,7 +113,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             top_parents=[],
             raw_description="a wooden chair in a room",
         )
-        mock_resolve.return_value = FlashcardPayload(
+        mock_get_flashcard.return_value = FlashcardPayload(
             keyword="chair",
             pronunciation="/tʃer/",
             meaning_vi="cái ghế",
@@ -138,15 +138,15 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["confidence"], 95.0)
         self.assertEqual(data["bounding_box"]["width"], 0.5)
         # Kiểm tra candidate_keywords được truyền đúng: top_parents + top_aliases
-        mock_resolve.assert_called_once()
-        call_kwargs = mock_resolve.call_args.kwargs
+        mock_get_flashcard.assert_called_once()
+        call_kwargs = mock_get_flashcard.call_args.kwargs
         self.assertIn("candidate_keywords", call_kwargs)
         self.assertEqual(sorted(call_kwargs["candidate_keywords"]), sorted(["Seat"]))
 
     # ── 3b. Parents/Aliases Cache Hit ────────────────────────────────────────────
-    @patch("app.routers.vision.resolve_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
-    def test_parent_alias_passed_as_candidates(self, mock_detect, mock_resolve):
+    def test_parent_alias_passed_as_candidates(self, mock_detect, mock_get_flashcard):
         """Khi Rekognition trả về nhãn 'Armchair' với parent 'Chair',
         router phải truyền ['Chair'] vào candidate_keywords để cache resolver
         có thể tìm thời exact match trước khi gọi Bedrock.
@@ -161,7 +161,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             top_parents=["Chair"],
             raw_description="a green armchair near window",
         )
-        mock_resolve.return_value = FlashcardPayload(
+        mock_get_flashcard.return_value = FlashcardPayload(
             keyword="chair",
             pronunciation="/tʃer/",
             meaning_vi="cái ghế",
@@ -182,15 +182,15 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         data = res.json()
         self.assertEqual(data["status"], "OK")
         # Kiểm tra candidate_keywords bao gồm đúng parent 'Chair'
-        call_kwargs = mock_resolve.call_args.kwargs
+        call_kwargs = mock_get_flashcard.call_args.kwargs
         self.assertIn("candidate_keywords", call_kwargs)
         self.assertIn("Chair", call_kwargs["candidate_keywords"])
 
     # ── 4. Low Confidence Graceful Fallback ───────────────────────────────────
-    @patch("app.routers.vision.resolve_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
     @patch("app.services.degradation_service.fallback_keyword_from_context", new_callable=AsyncMock)
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
-    def test_low_confidence_fallback_scan(self, mock_detect, mock_fallback, mock_resolve):
+    def test_low_confidence_fallback_scan(self, mock_detect, mock_fallback, mock_get_flashcard):
         # Confidence < 50% -> triggers Bedrock fallback
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Wood", 42.0, [], [], [])],
@@ -203,7 +203,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             raw_description="a wooden desk in office",
         )
         mock_fallback.return_value = "desk"
-        mock_resolve.return_value = FlashcardPayload(
+        mock_get_flashcard.return_value = FlashcardPayload(
             keyword="desk",
             pronunciation="/desk/",
             meaning_vi="bàn làm việc",
@@ -235,9 +235,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "FILE_EMPTY")
 
-    @patch("app.routers.vision.resolve_flashcard_progressive")
+    @patch("app.routers.vision.stream_flashcard")
     @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
-    def test_scan_stream_success(self, mock_detect, mock_resolve_stream):
+    def test_scan_stream_success(self, mock_detect, mock_stream_flashcard):
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Chair", 95.0, ["Furniture"], ["Seat"], [])],
             top_label="Chair",
@@ -266,7 +266,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             }
             yield {"event": "done", "data": {"step": "DONE", "status": "SUCCESS"}}
 
-        mock_resolve_stream.side_effect = fake_stream
+        mock_stream_flashcard.side_effect = fake_stream
 
         files = {"file": ("chair.jpg", io.BytesIO(b"valid image data"), "image/jpeg")}
         res = self.client.post(

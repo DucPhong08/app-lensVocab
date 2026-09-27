@@ -144,7 +144,7 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-async def resolve_flashcard(
+async def get_flashcard(
     keyword: str,
     redis: aioredis.Redis,
     candidate_keywords: list[str] | None = None,
@@ -231,7 +231,7 @@ async def resolve_flashcard(
     return payload
 
 
-async def resolve_flashcard_progressive(
+async def stream_flashcard(
     keyword: str,
     redis: aioredis.Redis,
     candidate_keywords: list[str] | None = None,
@@ -478,21 +478,23 @@ async def resolve_flashcard_progressive(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-async def _persist_existing(existing: GlobalFlashcard, redis: aioredis.Redis) -> GlobalFlashcard:
+async def _sync_existing_to_redis(
+    existing: GlobalFlashcard, redis: aioredis.Redis
+) -> GlobalFlashcard:
     confirmed = _payload_from_document(existing, source="mongodb", is_draft=False)
     await _save_to_redis(redis, confirmed)
     return existing
 
 
-async def confirm_and_persist(
+async def save_global_flashcard(
     payload: FlashcardPayload,
     redis: aioredis.Redis,
 ) -> GlobalFlashcard:
     """Lưu thẻ vào DB của bạn (MongoDB Atlas Free M0) + đồng bộ Redis."""
     existing = await GlobalFlashcard.find_one(GlobalFlashcard.keyword == payload.keyword)
     if existing is not None:
-        logger.warning("confirm_persist: keyword=%s đã tồn tại", payload.keyword)
-        return await _persist_existing(existing, redis)
+        logger.warning("save_global_flashcard: keyword=%s đã tồn tại", payload.keyword)
+        return await _sync_existing_to_redis(existing, redis)
 
     try:
         embedding = await create_titan_embedding(payload.keyword)
@@ -524,7 +526,7 @@ async def confirm_and_persist(
             # Cực hiếm: bị insert rồi lại bị xóa ngay sau đó — không tự đoán,
             # để caller biết có vấn đề bất thường.
             raise
-        return await _persist_existing(winner, redis)
+        return await _sync_existing_to_redis(winner, redis)
 
     confirmed = _payload_from_document(card, source="mongodb", is_draft=False)
     await _save_to_redis(redis, confirmed)

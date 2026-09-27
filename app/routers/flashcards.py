@@ -10,7 +10,7 @@ from pymongo.errors import DuplicateKeyError
 from app.dependencies.auth import get_current_user
 from app.models.models import FlashcardStatus, GlobalFlashcard, User, UserFlashcard
 from app.redis_client import get_redis
-from app.services.cache_service import FlashcardPayload, confirm_and_persist
+from app.services.cache_service import FlashcardPayload, save_global_flashcard
 
 router = APIRouter()
 
@@ -78,7 +78,7 @@ async def confirm_flashcard(
     )
 
     # 1. Lưu GlobalFlashcard
-    global_card = await confirm_and_persist(payload, redis)
+    global_card = await save_global_flashcard(payload, redis)
 
     # 2. Tạo hoặc lấy UserFlashcard
     user_card = await UserFlashcard.find_one(
