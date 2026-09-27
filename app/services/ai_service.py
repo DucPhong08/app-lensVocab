@@ -55,7 +55,7 @@ def _get_rekognition_client():
 
 
 def _get_bedrock_client():
-    return _get_boto3_session().client("bedrock-runtime", config=_BOTO_CONFIG)
+    return _get_embedding_session().client("bedrock-runtime", config=_BOTO_CONFIG)
 
 
 def _get_embedding_client():
