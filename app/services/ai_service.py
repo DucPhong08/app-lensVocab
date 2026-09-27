@@ -26,11 +26,27 @@ _BOTO_CONFIG = Config(
 
 @lru_cache(maxsize=1)
 def _get_boto3_session() -> boto3.Session:
-    """Tạo AWS Session singleton từ IAM Credentials."""
+    """Session chính: Rekognition, Nova Lite, Polly — dùng AWS_REGION."""
     return boto3.Session(
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
         region_name=settings.AWS_REGION,
+    )
+
+
+@lru_cache(maxsize=1)
+def _get_embedding_session() -> boto3.Session:
+    """Session riêng cho Titan Embeddings — dùng AWS_EMBEDDING_REGION nếu có.
+
+    Titan Embeddings v2 chưa hỗ trợ ap-southeast-1 (Singapore), nên khi đổi
+    AWS_REGION sang SIN để giảm latency, cần tách session này để vẫn gọi được
+    Titan ở region hỗ trợ (vd: ap-southeast-2 Sydney, us-east-1...).
+    """
+    embedding_region = settings.AWS_EMBEDDING_REGION or settings.AWS_REGION
+    return boto3.Session(
+        aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
+        aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
+        region_name=embedding_region,
     )
 
 
@@ -40,6 +56,10 @@ def _get_rekognition_client():
 
 def _get_bedrock_client():
     return _get_boto3_session().client("bedrock-runtime", config=_BOTO_CONFIG)
+
+
+def _get_embedding_client():
+    return _get_embedding_session().client("bedrock-runtime", config=_BOTO_CONFIG)
 
 
 def _get_polly_client():
@@ -253,7 +273,7 @@ def _sync_generate_content(keyword: str) -> GeneratedFlashcard:
         modelId=settings.BEDROCK_MODEL_ID,
         system=[{"text": _SYSTEM_PROMPT}],
         messages=[{"role": "user", "content": [{"text": prompt}]}],
-        inferenceConfig={"temperature": 0.2, "maxTokens": 300},
+        inferenceConfig={"temperature": 0.2, "maxTokens": 200},
     )
 
     text_output = response["output"]["message"]["content"][0]["text"]
@@ -289,7 +309,7 @@ async def generate_flashcard_content(keyword: str) -> GeneratedFlashcard:
     retry=retry_if_exception_type(KeyError),
 )
 def _sync_create_embedding(text: str) -> list[float]:
-    client = _get_bedrock_client()
+    client = _get_embedding_client()
     body = json.dumps({"inputText": text.lower().strip()})
 
     response = client.invoke_model(
