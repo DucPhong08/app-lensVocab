@@ -22,11 +22,8 @@ async def lifespan(app: FastAPI):
 def create_app() -> FastAPI:
     app = FastAPI(
         title="LensVocab API",
-        version="1.0.0",
-        description="Backend cho ứng dụng học tiếng Anh LensVocab",
         lifespan=lifespan,
         docs_url="/api",
-        openapi_url="/api/openapi.json",
         swagger_ui_parameters={"defaultModelsExpandDepth": -1},
     )
 

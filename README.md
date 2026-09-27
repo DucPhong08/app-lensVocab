@@ -139,7 +139,8 @@ make test
 |               | `GET`   | `/auth/me`               | Lấy thông tin cá nhân & hạn mức scan còn lại                     |
 | **Users**     | `GET`   | `/users/me/preferences`  | Xem sở thích học tập & quyền lợi gói cước                        |
 |               | `PATCH` | `/users/me/preferences`  | Cập nhật giọng đọc Polly, tốc độ phát âm, mục tiêu học           |
-| **Vision**    | `POST`  | `/vision/scan`           | Tải ảnh lên nhận diện đồ vật, trích xuất BoundingBox & Flashcard |
+| **Vision**    | `POST`  | `/vision/scan`           | Tải ảnh lên nhận diện đồ vật, trích xuất BoundingBox & Flashcard (REST) |
+|               | `POST`  | `/vision/scan/stream`    | Stream tiến trình nhận diện, BoundingBox & tạo Flashcard theo thời gian thực (SSE) |
 | **Flashcard** | `POST`  | `/flashcards/confirm`    | Xác nhận lưu thẻ vào bộ sưu tập cá nhân                          |
 |               | `GET`   | `/flashcards`            | Xem danh sách thẻ từ vựng đã lưu                                 |
 | **Review**    | `GET`   | `/review/today`          | Lấy hàng đợi từ cần ôn tập hôm nay (SM-2)                        |

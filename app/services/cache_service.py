@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import AsyncGenerator
 from dataclasses import asdict, dataclass
 from typing import Any
 
@@ -213,6 +214,204 @@ async def resolve_flashcard(
     # lần nữa trước khi user confirm (reload trang, 2 user khác nhau...).
     await _save_to_redis(redis, payload)
     return payload
+
+
+async def resolve_flashcard_progressive(
+    keyword: str,
+    redis: aioredis.Redis,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Phát các sự kiện tiến trình phân tích flashcard theo dạng Generator phục vụ SSE:
+
+    - Tra cứu Tầng 1 (Redis)
+    - Tra cứu Tầng 2 (MongoDB Atlas exact + Vector Search)
+    - Tầng 3 (AWS Bedrock sinh từ vựng + AWS Polly sinh giọng đọc)
+    """
+    normalized = keyword.lower().strip()
+
+    # Báo tiến độ tra cứu Cache
+    yield {
+        "event": "status",
+        "data": {"step": "LOOKUP_CACHE", "message": "Đang tra cứu từ điển và bộ nhớ đệm..."},
+    }
+
+    # ── Tầng 1: Redis ─────────────────────────────────────────────────────────
+    cached = await _get_from_redis(redis, normalized)
+    if cached is not None:
+        logger.info("cache_hit=redis keyword=%s", normalized)
+        yield {
+            "event": "vocab_content",
+            "data": {
+                "step": "VOCAB_CONTENT",
+                "source": "redis",
+                "keyword": cached.keyword,
+                "pronunciation": cached.pronunciation,
+                "meaning_vi": cached.meaning_vi,
+                "example_1": cached.example_1,
+                "example_2": cached.example_2,
+                "related_words": cached.related_words,
+                "is_draft": cached.is_draft,
+            },
+        }
+        if cached.audio_base64:
+            yield {
+                "event": "audio_ready",
+                "data": {"step": "AUDIO_READY", "audio_base64": cached.audio_base64},
+            }
+        yield {
+            "event": "done",
+            "data": {"step": "DONE", "status": "SUCCESS", "source": "redis", "keyword": normalized},
+        }
+        return
+
+    # ── Tầng 2a: MongoDB exact match ─────────────────────────────────────────
+    exact = await _find_exact_mongodb(normalized)
+    if exact is not None:
+        logger.info("cache_hit=mongodb_exact keyword=%s", normalized)
+        payload = _payload_from_document(exact, source="mongodb", is_draft=False)
+        await _save_to_redis(redis, payload)
+        yield {
+            "event": "vocab_content",
+            "data": {
+                "step": "VOCAB_CONTENT",
+                "source": "mongodb",
+                "keyword": payload.keyword,
+                "pronunciation": payload.pronunciation,
+                "meaning_vi": payload.meaning_vi,
+                "example_1": payload.example_1,
+                "example_2": payload.example_2,
+                "related_words": payload.related_words,
+                "is_draft": False,
+            },
+        }
+        if payload.audio_base64:
+            yield {
+                "event": "audio_ready",
+                "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
+            }
+        yield {
+            "event": "done",
+            "data": {
+                "step": "DONE",
+                "status": "SUCCESS",
+                "source": "mongodb",
+                "keyword": normalized,
+            },
+        }
+        return
+
+    # ── Tầng 2b: MongoDB Vector Search ───────────────────────────────────────
+    match = None
+    try:
+        embedding = await create_titan_embedding(normalized)
+    except Exception as exc:
+        logger.warning("titan_embedding_failed: %s", exc)
+        embedding = None
+
+    if embedding is not None:
+        match = await _search_mongodb_vector(embedding)
+
+    if match is not None:
+        logger.info("cache_hit=mongodb_vector keyword=%s matched=%s", normalized, match.keyword)
+        payload = _payload_from_document(match, source="mongodb", is_draft=False)
+        await _save_to_redis(redis, payload)
+        yield {
+            "event": "vocab_content",
+            "data": {
+                "step": "VOCAB_CONTENT",
+                "source": "mongodb_vector",
+                "keyword": payload.keyword,
+                "pronunciation": payload.pronunciation,
+                "meaning_vi": payload.meaning_vi,
+                "example_1": payload.example_1,
+                "example_2": payload.example_2,
+                "related_words": payload.related_words,
+                "is_draft": False,
+            },
+        }
+        if payload.audio_base64:
+            yield {
+                "event": "audio_ready",
+                "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
+            }
+        yield {
+            "event": "done",
+            "data": {
+                "step": "DONE",
+                "status": "SUCCESS",
+                "source": "mongodb_vector",
+                "keyword": normalized,
+            },
+        }
+        return
+
+    # ── Tầng 3: AWS Bedrock (Nova) + AWS Polly ────────────────────────────────
+    logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly", normalized)
+    yield {
+        "event": "status",
+        "data": {
+            "step": "AI_GENERATING",
+            "message": "Đang dùng AWS Bedrock Nova Lite sinh nghĩa và câu ví dụ...",
+        },
+    }
+    generated = await generate_flashcard_content(normalized)
+
+    yield {
+        "event": "vocab_content",
+        "data": {
+            "step": "VOCAB_CONTENT",
+            "source": "bedrock",
+            "keyword": normalized,
+            "pronunciation": generated.pronunciation,
+            "meaning_vi": generated.meaning_vi,
+            "example_1": generated.example_1,
+            "example_2": generated.example_2,
+            "related_words": generated.related_words,
+            "is_draft": True,
+        },
+    }
+
+    # Sinh giọng đọc bằng AWS Polly
+    yield {
+        "event": "status",
+        "data": {
+            "step": "SYNTHESIZING_AUDIO",
+            "message": "Đang tổng hợp giọng phát âm chuẩn với AWS Polly...",
+        },
+    }
+    try:
+        audio_b64 = await synthesize_speech(normalized)
+    except Exception as exc:
+        logger.error("polly_tts_failed: %s", exc)
+        audio_b64 = None
+
+    if audio_b64:
+        yield {
+            "event": "audio_ready",
+            "data": {"step": "AUDIO_READY", "audio_base64": audio_b64},
+        }
+
+    payload = FlashcardPayload(
+        keyword=normalized,
+        pronunciation=generated.pronunciation,
+        meaning_vi=generated.meaning_vi,
+        example_1=generated.example_1,
+        example_2=generated.example_2,
+        related_words=generated.related_words,
+        audio_base64=audio_b64,
+        source="bedrock",
+        is_draft=True,
+    )
+    await _save_to_redis(redis, payload)
+
+    yield {
+        "event": "done",
+        "data": {
+            "step": "DONE",
+            "status": "SUCCESS",
+            "source": "bedrock",
+            "keyword": normalized,
+        },
+    }
 
 
 # ─────────────────────────────────────────────────────────────────────────────

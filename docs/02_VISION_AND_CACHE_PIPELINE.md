@@ -87,3 +87,18 @@ Client              FastAPI [/scan]             Redis               AWS Rekognit
   * Lỗi do ảnh client gửi (`InvalidImageFormatException`): Trả về `HTTP 400 BAD REQUEST`.
   * Lỗi do dịch vụ AWS (hết quota, throttling, timeout): Trả về `HTTP 502 BAD GATEWAY` (`AWS_VISION_UNAVAILABLE`).
 * **Tuyệt đối không để rò rỉ:** Không bao giờ để bung exception 500 kèm stack trace chứa IAM role hay endpoint AWS ra client.
+
+---
+
+## 4. Giao Thức Streaming Thời Gian Thực (Server-Sent Events - SSE)
+
+Bên cạnh endpoint truyền thống `POST /vision/scan`, hệ thống cung cấp endpoint streaming thời gian thực `POST /vision/scan/stream` với `Content-Type: text/event-stream`:
+
+* **Mục đích:** Tối ưu trải nghiệm người dùng khi gặp Cache Miss (chuỗi AI Rekognition + Bedrock + Polly mất 2.5s–4s). Frontend nhận diện nhãn và vẽ khung Bounding Box ngay ở giây đầu tiên, sau đó nhận dần nội dung Flashcard và file âm thanh phát âm.
+* **Header tối ưu Nginx:** Đính kèm `X-Accel-Buffering: no` để tắt buffer của Reverse Proxy, đảm bảo client nhận gói tin ngay lập tức.
+* **Chuỗi sự kiện (Event Sequence):**
+  1. `event: status` — Báo trạng thái từng chặng (`START`, `LOOKUP_CACHE`, `AI_GENERATING`, `SYNTHESIZING_AUDIO`).
+  2. `event: vision_detected` — Trả về nhãn nhận diện, độ tin cậy và tọa độ Bounding Box từ AWS Rekognition để Frontend vẽ khung viền ngay lập tức.
+  3. `event: vocab_content` — Trả về phiên âm IPA, nghĩa tiếng Việt, câu ví dụ và từ liên quan (từ Cache hoặc Bedrock Nova Lite).
+  4. `event: audio_ready` — Trả về dữ liệu âm thanh phát âm MP3 (chuỗi base64) từ AWS Polly.
+  5. `event: done` — Xác nhận hoàn thành toàn bộ chu trình xử lý.

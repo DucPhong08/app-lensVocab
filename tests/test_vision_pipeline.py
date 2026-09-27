@@ -178,6 +178,61 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["keyword"], "desk")
         self.assertEqual(data["meaning_vi"], "bàn làm việc")
 
+    # ── 5. SSE Progressive Streaming Tests ───────────────────────────────────
+    def test_scan_stream_empty_file_returns_400(self):
+        files = {"file": ("empty.jpg", io.BytesIO(b""), "image/jpeg")}
+        res = self.client.post(
+            "/vision/scan/stream", files=files, headers={"Authorization": "Bearer token"}
+        )
+        self.assertEqual(res.status_code, 400)
+        self.assertEqual(res.json()["detail"], "FILE_EMPTY")
+
+    @patch("app.routers.vision.resolve_flashcard_progressive")
+    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    def test_scan_stream_success(self, mock_detect, mock_resolve_stream):
+        mock_detect.return_value = VisionResult(
+            labels=[RekognitionLabel("Chair", 95.0, ["Furniture"], ["Seat"], [])],
+            top_label="Chair",
+            top_confidence=95.0,
+            top_bounding_box=BoundingBox(0.5, 0.5, 0.1, 0.1),
+            top_categories=["Furniture"],
+            top_aliases=["Seat"],
+            top_parents=[],
+            raw_description="a wooden chair in a room",
+        )
+
+        async def fake_stream(keyword, redis):
+            yield {
+                "event": "vocab_content",
+                "data": {
+                    "step": "VOCAB_CONTENT",
+                    "source": "redis",
+                    "keyword": "chair",
+                    "pronunciation": "/tʃer/",
+                    "meaning_vi": "cái ghế",
+                },
+            }
+            yield {
+                "event": "audio_ready",
+                "data": {"step": "AUDIO_READY", "audio_base64": "mp3_data"},
+            }
+            yield {"event": "done", "data": {"step": "DONE", "status": "SUCCESS"}}
+
+        mock_resolve_stream.side_effect = fake_stream
+
+        files = {"file": ("chair.jpg", io.BytesIO(b"valid image data"), "image/jpeg")}
+        res = self.client.post(
+            "/vision/scan/stream", files=files, headers={"Authorization": "Bearer token"}
+        )
+
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("text/event-stream", res.headers.get("content-type", ""))
+        self.assertIn("event: vision_detected", res.text)
+        self.assertIn("event: vocab_content", res.text)
+        self.assertIn("event: audio_ready", res.text)
+        self.assertIn("event: done", res.text)
+        self.assertIn('"cái ghế"', res.text)
+
 
 if __name__ == "__main__":
     unittest.main()
