@@ -1,0 +1,34 @@
+# Virtual Environment & Packages
+.venv/
+venv/
+ENV/
+*.egg-info/
+
+# Environment Variables & Secrets (Tuyệt đối không đưa file .env vào Docker image)
+.env
+.env.*
+!.env.example
+
+# Git & IDE
+.git/
+.gitignore
+.vscode/
+.idea/
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.ruff_cache/
+
+# Local Database Volumes & Data
+mongodata/
+
+# Testing & Docs (Giảm dung lượng Docker image khi deploy)
+tests/
+docs/
+create_vector_index.js
+docker-compose.yml
+Makefile

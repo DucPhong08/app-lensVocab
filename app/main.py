@@ -4,6 +4,7 @@ import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.bootstrap import setup_beanie
 from app.database import close_motor_client, get_motor_client
@@ -31,6 +32,14 @@ def create_app() -> FastAPI:
         },
     )
 
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
     @app.middleware("http")
     async def add_process_time_header(request: Request, call_next):
         start_time = time.perf_counter()
@@ -38,6 +47,10 @@ def create_app() -> FastAPI:
         process_time = (time.perf_counter() - start_time) * 1000
         response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
         return response
+
+    @app.get("/health", tags=["Health"])
+    async def health_check():
+        return {"status": "ok"}
 
     from app.routers import admin, auth, flashcards, review, users, vision
 

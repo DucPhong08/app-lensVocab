@@ -65,6 +65,11 @@ class TestAPIAuthAndProtection(unittest.TestCase):
         self.assertEqual(data["daily_quota_left"], 10)
         self.assertEqual(data["account_tier"], "FREE")
 
+    def test_health_check_endpoint(self):
+        res = self.client.get("/health")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json(), {"status": "ok"})
+
 
 if __name__ == "__main__":
     unittest.main()
