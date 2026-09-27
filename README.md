@@ -86,23 +86,6 @@ Tạo file `.env` từ file mẫu:
 cp .env.example .env
 ```
 
-Mở `.env` và cập nhật thông tin AWS IAM Credentials và Secret Key:
-
-```env
-MONGODB_URL=mongodb://root:root@localhost:27017/?authSource=admin
-MONGODB_DB_NAME=lensvocab
-REDIS_URL=redis://localhost:6379/0
-
-SECRET_KEY=dien-mot-chuoi-bi-mat-ngau-nhien-o-day
-
-AWS_ACCESS_KEY_ID=AKIA...
-AWS_SECRET_ACCESS_KEY=...
-AWS_REGION=us-east-1
-
-BEDROCK_MODEL_ID=amazon.nova-lite-v1:0
-BEDROCK_EMBEDDING_MODEL_ID=amazon.titan-embed-text-v2:0
-```
-
 ### 4. Khởi chạy Database & Cache (Docker)
 
 Chạy MongoDB Atlas Local và Redis qua Docker Compose:
@@ -162,12 +145,3 @@ python -m unittest discover tests
 |               | `PATCH` | `/api/v1/admin/settings`       | Cập nhật hạn mức quota, ngưỡng AI, bật/tắt bảo trì               |
 
 ---
-
-## 📖 Tài Liệu Chi Tiết (Documentation)
-
-Toàn bộ tài liệu kiến trúc, luồng thuật toán và cẩm nang kỹ thuật cho Developer & AI Agent được lưu trữ đầy đủ trong thư mục [`docs/`](docs/):
-* [01. Tổng quan Kiến trúc & Thiết kế Dữ liệu](docs/01_ARCHITECTURE_OVERVIEW.md)
-* [02. Chi tiết Luồng AI Vision & Multi-tier Cache](docs/02_VISION_AND_CACHE_PIPELINE.md)
-* [03. Thuật toán Lặp lại Ngắt quãng SM-2](docs/03_SPACED_REPETITION_SM2.md)
-* [04. Cẩm nang Phát triển & Mở rộng (Developer & Agent Guide)](docs/04_DEVELOPER_AND_AGENT_GUIDE.md)
-
