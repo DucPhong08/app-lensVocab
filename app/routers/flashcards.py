@@ -21,6 +21,20 @@ router = APIRouter()
 
 
 class ConfirmFlashcardRequest(BaseModel):
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "keyword": "chair",
+                "pronunciation": "/tʃer/",
+                "meaning_vi": "cái ghế",
+                "example_1": "I sit on a chair.",
+                "example_2": "This wooden chair is sturdy.",
+                "related_words": ["seat", "sofa", "stool"],
+                "audio_base64": None,
+            }
+        }
+    }
+
     keyword: str
     pronunciation: Optional[str] = None
     meaning_vi: str

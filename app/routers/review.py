@@ -43,8 +43,20 @@ class ReviewCardResponse(BaseModel):
 
 
 class SubmitReviewRequest(BaseModel):
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "quality": 4,
+            }
+        }
+    }
+
     quality: int = Field(
-        ..., ge=0, le=5, description="Đánh giá từ 0 (quên hoàn toàn) đến 5 (nhớ hoàn hảo)"
+        ...,
+        ge=0,
+        le=5,
+        description="Đánh giá từ 0 (quên hoàn toàn) đến 5 (nhớ hoàn hảo)",
+        examples=[4],
     )
 
 

@@ -17,18 +17,60 @@ router = APIRouter()
 # Schemas
 # ─────────────────────────────────────────────────────────────────────────────
 
-_EMAIL_PATTERN = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+_EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 
 
 class RegisterRequest(BaseModel):
-    email: str = Field(..., pattern=_EMAIL_PATTERN, description="Email người dùng")
-    password: str = Field(..., min_length=6, description="Mật khẩu tối thiểu 6 ký tự")
-    display_name: Optional[str] = None
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "user@example.com",
+                "password": "password123",
+                "display_name": "Nguyen Van A",
+            }
+        }
+    }
+
+    email: str = Field(
+        ...,
+        pattern=_EMAIL_PATTERN,
+        description="Email người dùng (vd: user@example.com)",
+        examples=["user@example.com"],
+    )
+    password: str = Field(
+        ...,
+        min_length=6,
+        description="Mật khẩu tối thiểu 6 ký tự",
+        examples=["password123"],
+    )
+    display_name: str | None = Field(
+        None,
+        description="Tên hiển thị người dùng",
+        examples=["Nguyen Van A"],
+    )
 
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., pattern=_EMAIL_PATTERN, description="Email người dùng")
-    password: str = Field(..., description="Mật khẩu")
+    model_config = {
+        "json_schema_extra": {
+            "example": {
+                "email": "user@example.com",
+                "password": "password123",
+            }
+        }
+    }
+
+    email: str = Field(
+        ...,
+        pattern=_EMAIL_PATTERN,
+        description="Email người dùng (vd: user@example.com)",
+        examples=["user@example.com"],
+    )
+    password: str = Field(
+        ...,
+        description="Mật khẩu",
+        examples=["password123"],
+    )
 
 
 class TokenResponse(BaseModel):
