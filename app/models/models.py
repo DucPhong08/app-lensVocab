@@ -7,6 +7,7 @@ from typing import Annotated, Optional
 
 from beanie import Document, Indexed
 from pydantic import BaseModel, Field
+from pymongo import ASCENDING, IndexModel
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -123,7 +124,7 @@ class UserFlashcard(Document):
         indexes = [
             "user_id",
             "next_review_date",
-            [("user_id", 1), ("global_flashcard_id", 1)],
+            IndexModel([("user_id", ASCENDING), ("global_flashcard_id", ASCENDING)], unique=True),
         ]
 
 

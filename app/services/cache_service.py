@@ -107,7 +107,8 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
         },
         {
             "$addFields": {
-                "score": {"$meta": "vectorSearchScore"}
+                "score": {"$meta": "vectorSearchScore"},
+                "id": "$_id",
             }
         },
         {
@@ -118,7 +119,7 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
     ]
 
     try:
-        results = await GlobalFlashcard.aggregate(pipeline).to_list()
+        results = await GlobalFlashcard.aggregate(pipeline).to_list(length=1)
     except OperationFailure as exc:
         # Case mong đợi: index vector chưa tạo (vd dev local chưa config Atlas
         # Search). An toàn để bỏ qua sang Tầng 3.

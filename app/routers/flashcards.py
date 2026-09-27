@@ -5,6 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from pymongo.errors import DuplicateKeyError
 
 from app.dependencies.auth import get_current_user
 from app.models.models import FlashcardStatus, GlobalFlashcard, User, UserFlashcard
@@ -89,7 +90,17 @@ async def confirm_flashcard(
             global_flashcard_id=global_card.id,
             status=FlashcardStatus.CONFIRMED,
         )
-        await user_card.insert()
+        try:
+            await user_card.insert()
+        except DuplicateKeyError:
+            # Race condition: bản ghi vừa được tạo bởi request đồng thời
+            user_card = await UserFlashcard.find_one(
+                UserFlashcard.user_id == current_user.id,
+                UserFlashcard.global_flashcard_id == global_card.id,
+            )
+            if user_card:
+                user_card.status = FlashcardStatus.CONFIRMED
+                await user_card.save()
     else:
         user_card.status = FlashcardStatus.CONFIRMED
         await user_card.save()

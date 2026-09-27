@@ -1,4 +1,6 @@
 from __future__ import annotations
+
+from botocore.exceptions import ClientError
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from app.dependencies.auth import get_current_user
@@ -10,6 +12,9 @@ from app.services.degradation_service import DegradationResult, handle_vision_re
 from app.services.quota_service import MaintenanceModeError, QuotaExceededError, check_and_consume_quota
 
 router = APIRouter()
+
+MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5MB giới hạn direct bytes của AWS Rekognition
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
 
 
 class BoundingBoxSchema(BaseModel):
@@ -76,6 +81,12 @@ async def scan_image(
             detail="QUOTA_EXCEEDED",
         )
 
+    if file.content_type and file.content_type.lower() not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="INVALID_IMAGE_FORMAT",
+        )
+
     image_bytes = await file.read()
     if not image_bytes:
         raise HTTPException(
@@ -83,8 +94,26 @@ async def scan_image(
             detail="FILE_EMPTY",
         )
 
+    if len(image_bytes) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail="IMAGE_TOO_LARGE",
+        )
+
     # ── 1. AWS Rekognition: Nhận diện đồ vật + BoundingBox + Metadata ──────────
-    vision_result = await detect_image_labels(image_bytes)
+    try:
+        vision_result = await detect_image_labels(image_bytes)
+    except ClientError as exc:
+        error_code = exc.response.get("Error", {}).get("Code", "")
+        if error_code in ("InvalidImageFormatException", "ImageTooLargeException"):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="INVALID_IMAGE_DATA",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="AWS_VISION_UNAVAILABLE",
+        )
 
     # ── 2. Graceful Degradation ───────────────────────────────────────────────
     analysis = await handle_vision_result(
