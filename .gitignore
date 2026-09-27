@@ -1,0 +1,25 @@
+# Virtual Environment
+.venv/
+venv/
+ENV/
+
+# Environment Variables & Secrets (Không bao giờ commit file này)
+.env
+
+# Python Cache & Bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+
+# IDE Configuration
+.vscode/
+.idea/
+
+# Local Database & Storage Volumes
+mongodata/
+
+# OS Specific
+.DS_Store
+Thumbs.db
