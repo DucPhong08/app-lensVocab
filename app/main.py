@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from app.bootstrap import setup_beanie
 from app.database import close_motor_client, get_motor_client
@@ -24,8 +25,19 @@ def create_app() -> FastAPI:
         title="LensVocab API",
         lifespan=lifespan,
         docs_url="/api",
-        swagger_ui_parameters={"defaultModelsExpandDepth": -1},
+        swagger_ui_parameters={
+            "defaultModelsExpandDepth": -1,
+            "displayRequestDuration": True,
+        },
     )
+
+    @app.middleware("http")
+    async def add_process_time_header(request: Request, call_next):
+        start_time = time.perf_counter()
+        response = await call_next(request)
+        process_time = (time.perf_counter() - start_time) * 1000
+        response.headers["X-Process-Time"] = f"{process_time:.2f}ms"
+        return response
 
     from app.routers import admin, auth, flashcards, review, users, vision
 
