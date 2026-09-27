@@ -14,7 +14,7 @@ Dựa trên **Đường cong quên lãng của Ebbinghaus (Forgetting Curve)**:
 
 ## 2. Thang Đo Điểm Chất Lượng Ôn Tập (Quality Score: 0 - 5)
 
-Khi học viên ôn tập một thẻ từ vựng (`POST /api/v1/review/submit`), họ sẽ tự đánh giá mức độ nhớ của mình theo thang điểm:
+Khi học viên ôn tập một thẻ từ vựng (`POST /review/{user_flashcard_id}`), họ sẽ tự đánh giá mức độ nhớ của mình theo thang điểm:
 
 | Điểm (`quality`) | Định nghĩa | Ý nghĩa thuật toán |
 | :---: | :--- | :--- |
@@ -57,7 +57,7 @@ $$\text{next\_review\_date} = \text{today} + \text{timedelta(days=interval)}$$
 
 ## 4. Cơ Chế Chống Nản (Anti-demotivation Cap)
 
-Đối với người học mất gốc (A1-A2), việc mở app ra thấy danh sách 50–100 từ dồn ứ sẽ tạo cảm giác choáng ngợp và dẫn đến từ bỏ. Do đó, hệ thống tích hợp **Trần ôn tập linh hoạt** khi lấy hàng đợi (`GET /api/v1/review/today`):
+Đối với người học mất gốc (A1-A2), việc mở app ra thấy danh sách 50–100 từ dồn ứ sẽ tạo cảm giác choáng ngợp và dẫn đến từ bỏ. Do đó, hệ thống tích hợp **Trần ôn tập linh hoạt** khi lấy hàng đợi (`GET /review/today`):
 
 ```python
 sys_settings = await get_system_settings()

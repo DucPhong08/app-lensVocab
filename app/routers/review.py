@@ -67,7 +67,7 @@ async def get_today_review_queue(
     current_user: User = Depends(get_current_user),
 ) -> list[ReviewCardResponse]:
     """
-    GET /api/v1/review/today
+    GET /review/today
     Lấy danh sách từ cần ôn hôm nay:
       - next_review_date <= hôm nay.
       - Giới hạn tối đa 15 từ (Anti-demotivation cap) để người mất gốc không bị quá tải.
@@ -132,7 +132,7 @@ async def submit_card_review(
     current_user: User = Depends(get_current_user),
 ) -> SubmitReviewResponse:
     """
-    POST /api/v1/review/{user_flashcard_id}
+    POST /review/{user_flashcard_id}
     Chấm điểm ôn tập (SM-2 Spaced Repetition):
       - quality: 0-2 (quên) → reset interval về 1 ngày.
       - quality: 3-5 (nhớ) → tăng interval theo efactor.

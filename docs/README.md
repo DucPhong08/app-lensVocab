@@ -16,7 +16,7 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 * Chi tiết các Beanie Document Models: `User`, `GlobalFlashcard`, `UserFlashcard`, `ReviewLog`, `SystemSetting`.
 
 ### 2. [02. Chi Tiết Luồng AI Vision & Multi-Tier Cache](02_VISION_AND_CACHE_PIPELINE.md)
-* Luồng xử lý chi tiết của endpoint `POST /api/v1/scan`.
+* Luồng xử lý chi tiết của endpoint `POST /vision/scan`.
 * Cơ chế trích xuất BoundingBox & Label từ **AWS Rekognition**.
 * Thuật toán cứu nguy **Graceful Degradation** khi ảnh mờ hoặc góc chụp khó.
 * Giải thuật **Multi-tier Cache (4 tầng)**: Redis exact match $\rightarrow$ MongoDB exact match $\rightarrow$ Atlas `$vectorSearch` $\rightarrow$ AWS Bedrock + Polly.

@@ -1,6 +1,6 @@
 # 02. Chi Tiết Luồng AI Vision & Multi-Tier Cache
 
-Tài liệu này mô tả chi tiết pipeline xử lý ảnh từ lúc client gửi request lên endpoint `POST /api/v1/scan` cho đến khi trả về flashcard hoàn chỉnh.
+Tài liệu này mô tả chi tiết pipeline xử lý ảnh từ lúc client gửi request lên endpoint `POST /vision/scan` cho đến khi trả về flashcard hoàn chỉnh.
 
 ---
 

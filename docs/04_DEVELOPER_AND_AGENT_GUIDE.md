@@ -14,7 +14,7 @@ Tài liệu này dành cho các kỹ sư backend và AI Agent tiếp quản dự
 4. **Đăng ký router trong `app/main.py`:**
    ```python
    from app.routers import analytics
-   app.include_router(analytics.router, prefix="/api/v1", tags=["Analytics"])
+   app.include_router(analytics.router, prefix="/analytics", tags=["Analytics"])
    ```
 
 ### 2. Sửa Đổi Hoặc Mở Rộng Document Model (MongoDB / Beanie)

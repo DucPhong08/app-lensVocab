@@ -67,7 +67,7 @@ async def scan_image(
     current_user: User = Depends(get_current_user),
 ) -> ScanResponse:
     """
-    POST /api/v1/scan
+    POST /vision/scan
 
     Pipeline thuần AWS:
       0. Xác thực người dùng và kiểm tra quota hàng ngày.

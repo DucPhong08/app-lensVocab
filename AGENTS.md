@@ -10,8 +10,8 @@ Chào đồng nghiệp Agent! Đây là cẩm nang tóm tắt nhanh giúp bạn 
 | :--- | :--- |
 | [`app/main.py`](file:///home/phong/Môn%20học/app-LensVocab/app/main.py) | Entrypoint FastAPI app, đăng ký router (`auth`, `users`, `admin`, `vision`, `flashcards`, `review`), lifespan quản lý kết nối MongoDB & Redis. |
 | [`app/models/models.py`](file:///home/phong/Môn%20học/app-LensVocab/app/models/models.py) | Định nghĩa toàn bộ Beanie Documents: `User`, `GlobalFlashcard`, `UserFlashcard`, `ReviewLog`, `SystemSetting` & `UserPreferences`. |
-| [`app/routers/vision.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/vision.py) | Xử lý `POST /api/v1/scan`: Nhận diện ảnh qua Rekognition, BoundingBox, fallback Bedrock, Multi-tier cache. |
-| [`app/routers/review.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/review.py) | Xử lý hàng đợi ôn bài `GET /review/today` & chấm điểm `POST /review/submit` theo thuật toán SM-2. |
+| [`app/routers/vision.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/vision.py) | Xử lý `POST /vision/scan`: Nhận diện ảnh qua Rekognition, BoundingBox, fallback Bedrock, Multi-tier cache. |
+| [`app/routers/review.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/review.py) | Xử lý hàng đợi ôn bài `GET /review/today` & chấm điểm `POST /review/{user_flashcard_id}` theo thuật toán SM-2. |
 | [`app/routers/users.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/users.py) | API tùy chỉnh sở thích học tập (`GET/PATCH /users/me/preferences`). |
 | [`app/routers/admin.py`](file:///home/phong/Môn%20học/app-LensVocab/app/routers/admin.py) | API cấu hình hệ thống động (`GET/PATCH /admin/settings`). |
 | [`app/services/cache_service.py`](file:///home/phong/Môn%20học/app-LensVocab/app/services/cache_service.py) | Multi-tier cache: Redis exact -> Mongo exact -> Atlas Vector Search -> Bedrock + Polly. |

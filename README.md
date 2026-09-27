@@ -36,7 +36,7 @@
 Client (Camera)
    │
    ▼
-FastAPI [/api/v1/scan] ──► [Redis Quota & Maintenance Gate]
+FastAPI [/vision/scan] ──► [Redis Quota & Maintenance Gate]
    │
    ├─► 1. AWS Rekognition (Detect Labels & Bounding Box)
    │      └─► Confidence < 50%? ──► Bedrock Graceful Fallback

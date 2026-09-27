@@ -58,7 +58,7 @@ async def confirm_flashcard(
     current_user: User = Depends(get_current_user),
 ) -> FlashcardItemResponse:
     """
-    POST /api/v1/flashcards/confirm
+    POST /flashcards/confirm
     Xác nhận thẻ nháp sau khi scan:
       1. Lưu vào GlobalFlashcard (MongoDB Atlas M0) + đồng bộ Redis.
       2. Tạo bản ghi UserFlashcard cho người dùng với trạng thái CONFIRMED.
@@ -130,7 +130,7 @@ async def list_user_flashcards(
     current_user: User = Depends(get_current_user),
 ) -> list[FlashcardItemResponse]:
     """
-    GET /api/v1/flashcards
+    GET /flashcards
     Lấy danh sách tất cả các flashcard của người dùng hiện tại.
     """
     user_cards = await UserFlashcard.find(UserFlashcard.user_id == current_user.id).to_list()

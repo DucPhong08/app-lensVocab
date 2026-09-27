@@ -56,7 +56,7 @@ Tài liệu này mô tả kiến trúc tổng thể, mô hình cấu hình 3 t�
   * `BEDROCK_EMBEDDING_MODEL_ID`: Cố định `amazon.titan-embed-text-v2:0` vì gắn liền với 1024 chiều vector của index MongoDB Atlas.
 
 ### Tầng 2: Cài đặt hệ thống động `SystemSetting` (Quản trị viên)
-* **Đặc điểm:** Lưu trong collection `system_settings` (Singleton `id: "global_config"`). Admin thay đổi qua API `PATCH /api/v1/admin/settings` và có **hiệu lực ngay lập tức (Hot-reload)** mà không cần deploy lại.
+* **Đặc điểm:** Lưu trong collection `system_settings` (Singleton `id: "global_config"`). Admin thay đổi qua API `PATCH /admin/settings` và có **hiệu lực ngay lập tức (Hot-reload)** mà không cần deploy lại.
 * **Bao gồm:**
   * `free_daily_quota`: Hạn mức scan ngày của gói Free (mặc định 10).
   * `premium_daily_quota`: Hạn mức scan ngày của gói Premium (mặc định 200 - chốt chặn chống bot).
@@ -67,7 +67,7 @@ Tài liệu này mô tả kiến trúc tổng thể, mô hình cấu hình 3 t�
   * `maintenance_mode`: Công tắc khẩn cấp đưa toàn bộ luồng scan vào chế độ bảo trì (HTTP 503).
 
 ### Tầng 3: Tùy chọn người dùng `UserPreferences` (Học viên)
-* **Đặc điểm:** Nhúng trực tiếp trong document `User` (trường `preferences`). Học viên tự điều chỉnh qua `PATCH /api/v1/users/me/preferences`.
+* **Đặc điểm:** Nhúng trực tiếp trong document `User` (trường `preferences`). Học viên tự điều chỉnh qua `PATCH /users/me/preferences`.
 * **Bao gồm:**
   * `preferred_voice_id`: Giọng đọc phát âm AWS Polly (`"Joanna"`, `"Matthew"`, `"Amy"`...).
   * `voice_speed`: Tốc độ đọc (`0.75x`, `1.0x`, `1.25x`).
