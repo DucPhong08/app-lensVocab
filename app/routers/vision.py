@@ -73,10 +73,10 @@ async def scan_image(
          - Trích xuất BoundingBox tọa độ đồ vật cụ thể (Instances).
          - Thuật toán Smart Selection: ưu tiên thực thể cụ thể trước chất liệu/bối cảnh.
       3. Graceful Degradation check (nếu confidence < 50% → Bedrock fallback).
-      4. Multi-Tier Cache:
-         - Tier 1: Redis exact match
-         - Tier 2: MongoDB Atlas Vector Search (Bedrock Titan Embeddings)
-         - Tier 3: AWS Bedrock (Nova sinh IPA, ví dụ, từ liên quan) + AWS Polly (đọc MP3)
+      4. Cache Resolver (Exact Match — không dùng Vector Search để tránh sai lệch ngữ nghĩa):
+         - Tier 1: Redis exact match (keyword chính, rồi duyệt Parents/Aliases từ Rekognition)
+         - Tier 2: MongoDB exact match (keyword chính, rồi duyệt Parents/Aliases từ Rekognition)
+         - Cache Miss: AWS Bedrock (Nova sinh IPA, ví dụ, từ liên quan) + AWS Polly (đọc MP3)
       5. Trả về đầy đủ dữ liệu cho client hiển thị, vẽ khung viền và phát âm.
     """
     redis = get_redis()
@@ -144,10 +144,12 @@ async def scan_image(
             message=analysis.message,
         )
 
-    # ── 3. Multi-Tier Cache (Bedrock + Polly + MongoDB Atlas) ─────────────────
+    # ── 3. Cache Resolver: Exact Match (keyword chính + Parents/Aliases) ───────
+    candidate_keywords = vision_result.top_parents + vision_result.top_aliases
     payload: FlashcardPayload = await resolve_flashcard(
         keyword=analysis.keyword,
         redis=redis,
+        candidate_keywords=candidate_keywords,
     )
 
     # Map BoundingBox sang Schema nếu có
@@ -288,7 +290,10 @@ async def scan_image_stream(
             return
 
         # 3. Stream tiến trình tra cứu Cache & Bedrock/Polly
-        async for chunk in resolve_flashcard_progressive(analysis.keyword, redis):
+        candidate_keywords = vision_result.top_parents + vision_result.top_aliases
+        async for chunk in resolve_flashcard_progressive(
+            analysis.keyword, redis, candidate_keywords=candidate_keywords
+        ):
             yield _format_sse(chunk["event"], chunk["data"])
 
     return StreamingResponse(

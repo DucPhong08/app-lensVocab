@@ -147,23 +147,40 @@ async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | No
 async def resolve_flashcard(
     keyword: str,
     redis: aioredis.Redis,
+    candidate_keywords: list[str] | None = None,
 ) -> FlashcardPayload:
     """
-    Luồng 3 tầng:
-      Tầng 1  → Redis exact match                    (cost = $0)
-      Tầng 2a → MongoDB exact match                   (cost = $0)
-      Tầng 2b → MongoDB Atlas Vector Search           (cost = Bedrock Titan embedding)
-      Tầng 3  → AWS Bedrock (Nova) + Polly             (cost = Bedrock inference + Polly TTS)
+    Luồng 2 tầng (đã loại bỏ Vector Search để đảm bảo độ chính xác 100%):
+
+      Tầng 1  → Redis Exact Match (keyword chính, sau đó duyệt Parents/Aliases)
+      Tầng 2  → MongoDB Exact Match (keyword chính, sau đó duyệt Parents/Aliases)
+      Cache Miss → AWS Bedrock Nova Lite sinh Flashcard + AWS Polly TTS
+
+    candidate_keywords: Danh sách nhãn thay thế từ metadata Rekognition
+      (top_parents + top_aliases). Được duyệt qua Exact Match theo thứ tự
+      TRƯỚC KHI gọi Bedrock — $0 chi phí, 0 rủi ro sai lệch ngữ nghĩa.
     """
     normalized = keyword.lower().strip()
 
-    # ── Tầng 1: Redis ─────────────────────────────────────────────────────────
+    # ── Tầng 1: Redis Exact Match (keyword chính) ──────────────────────────────
     cached = await _get_from_redis(redis, normalized)
     if cached is not None:
         logger.info("cache_hit=redis keyword=%s", normalized)
         return cached
 
-    # ── Tầng 2a: MongoDB exact match ─────────────────────────────────────────
+    # ── Tầng 1b: Redis Exact Match (Parents/Aliases từ Rekognition) ───────────
+    for candidate in candidate_keywords or []:
+        candidate_norm = candidate.lower().strip()
+        if candidate_norm == normalized:
+            continue
+        cached = await _get_from_redis(redis, candidate_norm)
+        if cached is not None:
+            logger.info(
+                "cache_hit=redis_alias keyword=%s matched_alias=%s", normalized, candidate_norm
+            )
+            return cached
+
+    # ── Tầng 2: MongoDB Exact Match (keyword chính) ───────────────────────────
     exact = await _find_exact_mongodb(normalized)
     if exact is not None:
         logger.info("cache_hit=mongodb_exact keyword=%s", normalized)
@@ -171,28 +188,26 @@ async def resolve_flashcard(
         await _save_to_redis(redis, payload)
         return payload
 
-    # ── Tầng 2b: MongoDB Vector Search ───────────────────────────────────────
-    match = None
-    try:
-        embedding = await create_titan_embedding(normalized)
-    except Exception as exc:
-        logger.warning("titan_embedding_failed: %s", exc)
-        embedding = None
+    # ── Tầng 2b: MongoDB Exact Match (Parents/Aliases từ Rekognition) ─────────
+    for candidate in candidate_keywords or []:
+        candidate_norm = candidate.lower().strip()
+        if candidate_norm == normalized:
+            continue
+        alias_match = await _find_exact_mongodb(candidate_norm)
+        if alias_match is not None:
+            logger.info(
+                "cache_hit=mongodb_alias keyword=%s matched_alias=%s",
+                normalized,
+                candidate_norm,
+            )
+            payload = _payload_from_document(alias_match, source="mongodb", is_draft=False)
+            await _save_to_redis(redis, payload)
+            return payload
 
-    if embedding is not None:
-        match = await _search_mongodb_vector(embedding)
-
-    if match is not None:
-        logger.info("cache_hit=mongodb_vector keyword=%s matched=%s", normalized, match.keyword)
-        payload = _payload_from_document(match, source="mongodb", is_draft=False)
-        await _save_to_redis(redis, payload)
-        return payload
-
-    # ── Tầng 3: AWS Bedrock (Nova) + AWS Polly ────────────────────────────────
+    # ── Cache Miss: AWS Bedrock Nova Lite + AWS Polly ─────────────────────────
     logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly", normalized)
     generated = await generate_flashcard_content(normalized)
 
-    # Sinh giọng đọc bằng AWS Polly
     try:
         audio_b64 = await synthesize_speech(normalized)
     except Exception as exc:
@@ -210,7 +225,7 @@ async def resolve_flashcard(
         source="bedrock",
         is_draft=True,
     )
-    # Cache draft luôn — tránh gọi lại Bedrock/Polly nếu cùng keyword được lookup
+    # Cache draft ngay — tránh gọi lại Bedrock/Polly nếu cùng keyword được lookup
     # lần nữa trước khi user confirm (reload trang, 2 user khác nhau...).
     await _save_to_redis(redis, payload)
     return payload
@@ -219,22 +234,27 @@ async def resolve_flashcard(
 async def resolve_flashcard_progressive(
     keyword: str,
     redis: aioredis.Redis,
+    candidate_keywords: list[str] | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
-    """Phát các sự kiện tiến trình phân tích flashcard theo dạng Generator phục vụ SSE:
+    """Stream tiến trình tra cứu Flashcard cho SSE (Server-Sent Events).
 
-    - Tra cứu Tầng 1 (Redis)
-    - Tra cứu Tầng 2 (MongoDB Atlas exact + Vector Search)
-    - Tầng 3 (AWS Bedrock sinh từ vựng + AWS Polly sinh giọng đọc)
+    Luồng (đã loại bỏ Vector Search):
+      Tầng 1  → Redis Exact Match (keyword chính + Parents/Aliases)
+      Tầng 2  → MongoDB Exact Match (keyword chính + Parents/Aliases)
+      Cache Miss → AWS Bedrock Nova Lite sinh Flashcard + AWS Polly TTS
+
+    candidate_keywords: Danh sách nhãn thay thế từ metadata Rekognition
+      (top_parents + top_aliases). Được duyệt qua Exact Match theo thứ tự
+      TRƯỚC KHI gọi Bedrock — $0 chi phí, 0 rủi ro sai lệch ngữ nghĩa.
     """
     normalized = keyword.lower().strip()
 
-    # Báo tiến độ tra cứu Cache
     yield {
         "event": "status",
         "data": {"step": "LOOKUP_CACHE", "message": "Đang tra cứu từ điển và bộ nhớ đệm..."},
     }
 
-    # ── Tầng 1: Redis ─────────────────────────────────────────────────────────
+    # ── Tầng 1: Redis Exact Match (keyword chính) ──────────────────────────────
     cached = await _get_from_redis(redis, normalized)
     if cached is not None:
         logger.info("cache_hit=redis keyword=%s", normalized)
@@ -263,7 +283,47 @@ async def resolve_flashcard_progressive(
         }
         return
 
-    # ── Tầng 2a: MongoDB exact match ─────────────────────────────────────────
+    # ── Tầng 1b: Redis Exact Match (Parents/Aliases từ Rekognition) ───────────
+    for candidate in candidate_keywords or []:
+        candidate_norm = candidate.lower().strip()
+        if candidate_norm == normalized:
+            continue
+        cached = await _get_from_redis(redis, candidate_norm)
+        if cached is not None:
+            logger.info(
+                "cache_hit=redis_alias keyword=%s matched_alias=%s", normalized, candidate_norm
+            )
+            yield {
+                "event": "vocab_content",
+                "data": {
+                    "step": "VOCAB_CONTENT",
+                    "source": "redis",
+                    "keyword": cached.keyword,
+                    "pronunciation": cached.pronunciation,
+                    "meaning_vi": cached.meaning_vi,
+                    "example_1": cached.example_1,
+                    "example_2": cached.example_2,
+                    "related_words": cached.related_words,
+                    "is_draft": cached.is_draft,
+                },
+            }
+            if cached.audio_base64:
+                yield {
+                    "event": "audio_ready",
+                    "data": {"step": "AUDIO_READY", "audio_base64": cached.audio_base64},
+                }
+            yield {
+                "event": "done",
+                "data": {
+                    "step": "DONE",
+                    "status": "SUCCESS",
+                    "source": "redis",
+                    "keyword": normalized,
+                },
+            }
+            return
+
+    # ── Tầng 2: MongoDB Exact Match (keyword chính) ───────────────────────────
     exact = await _find_exact_mongodb(normalized)
     if exact is not None:
         logger.info("cache_hit=mongodb_exact keyword=%s", normalized)
@@ -299,52 +359,51 @@ async def resolve_flashcard_progressive(
         }
         return
 
-    # ── Tầng 2b: MongoDB Vector Search ───────────────────────────────────────
-    match = None
-    try:
-        embedding = await create_titan_embedding(normalized)
-    except Exception as exc:
-        logger.warning("titan_embedding_failed: %s", exc)
-        embedding = None
-
-    if embedding is not None:
-        match = await _search_mongodb_vector(embedding)
-
-    if match is not None:
-        logger.info("cache_hit=mongodb_vector keyword=%s matched=%s", normalized, match.keyword)
-        payload = _payload_from_document(match, source="mongodb", is_draft=False)
-        await _save_to_redis(redis, payload)
-        yield {
-            "event": "vocab_content",
-            "data": {
-                "step": "VOCAB_CONTENT",
-                "source": "mongodb_vector",
-                "keyword": payload.keyword,
-                "pronunciation": payload.pronunciation,
-                "meaning_vi": payload.meaning_vi,
-                "example_1": payload.example_1,
-                "example_2": payload.example_2,
-                "related_words": payload.related_words,
-                "is_draft": False,
-            },
-        }
-        if payload.audio_base64:
+    # ── Tầng 2b: MongoDB Exact Match (Parents/Aliases từ Rekognition) ─────────
+    for candidate in candidate_keywords or []:
+        candidate_norm = candidate.lower().strip()
+        if candidate_norm == normalized:
+            continue
+        alias_match = await _find_exact_mongodb(candidate_norm)
+        if alias_match is not None:
+            logger.info(
+                "cache_hit=mongodb_alias keyword=%s matched_alias=%s",
+                normalized,
+                candidate_norm,
+            )
+            payload = _payload_from_document(alias_match, source="mongodb", is_draft=False)
+            await _save_to_redis(redis, payload)
             yield {
-                "event": "audio_ready",
-                "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
+                "event": "vocab_content",
+                "data": {
+                    "step": "VOCAB_CONTENT",
+                    "source": "mongodb",
+                    "keyword": payload.keyword,
+                    "pronunciation": payload.pronunciation,
+                    "meaning_vi": payload.meaning_vi,
+                    "example_1": payload.example_1,
+                    "example_2": payload.example_2,
+                    "related_words": payload.related_words,
+                    "is_draft": False,
+                },
             }
-        yield {
-            "event": "done",
-            "data": {
-                "step": "DONE",
-                "status": "SUCCESS",
-                "source": "mongodb_vector",
-                "keyword": normalized,
-            },
-        }
-        return
+            if payload.audio_base64:
+                yield {
+                    "event": "audio_ready",
+                    "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
+                }
+            yield {
+                "event": "done",
+                "data": {
+                    "step": "DONE",
+                    "status": "SUCCESS",
+                    "source": "mongodb",
+                    "keyword": normalized,
+                },
+            }
+            return
 
-    # ── Tầng 3: AWS Bedrock (Nova) + AWS Polly ────────────────────────────────
+    # ── Cache Miss: AWS Bedrock Nova Lite + AWS Polly ─────────────────────────
     logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly", normalized)
     yield {
         "event": "status",

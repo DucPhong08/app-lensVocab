@@ -137,6 +137,54 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["meaning_vi"], "cái ghế")
         self.assertEqual(data["confidence"], 95.0)
         self.assertEqual(data["bounding_box"]["width"], 0.5)
+        # Kiểm tra candidate_keywords được truyền đúng: top_parents + top_aliases
+        mock_resolve.assert_called_once()
+        call_kwargs = mock_resolve.call_args.kwargs
+        self.assertIn("candidate_keywords", call_kwargs)
+        self.assertEqual(sorted(call_kwargs["candidate_keywords"]), sorted(["Seat"]))
+
+    # ── 3b. Parents/Aliases Cache Hit ────────────────────────────────────────────
+    @patch("app.routers.vision.resolve_flashcard", new_callable=AsyncMock)
+    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    def test_parent_alias_passed_as_candidates(self, mock_detect, mock_resolve):
+        """Khi Rekognition trả về nhãn 'Armchair' với parent 'Chair',
+        router phải truyền ['Chair'] vào candidate_keywords để cache resolver
+        có thể tìm thời exact match trước khi gọi Bedrock.
+        """
+        mock_detect.return_value = VisionResult(
+            labels=[RekognitionLabel("Armchair", 88.0, ["Furniture"], [], ["Chair"])],
+            top_label="Armchair",
+            top_confidence=88.0,
+            top_bounding_box=BoundingBox(0.4, 0.6, 0.2, 0.1),
+            top_categories=["Furniture"],
+            top_aliases=[],
+            top_parents=["Chair"],
+            raw_description="a green armchair near window",
+        )
+        mock_resolve.return_value = FlashcardPayload(
+            keyword="chair",
+            pronunciation="/tʃer/",
+            meaning_vi="cái ghế",
+            example_1="I sit on a chair.",
+            example_2="A wooden chair.",
+            related_words=["seat", "stool"],
+            audio_base64="mp3_mock_data",
+            source="mongodb",  # hit từ alias lookup
+            is_draft=False,
+        )
+
+        files = {"file": ("armchair.jpg", io.BytesIO(b"valid image data"), "image/jpeg")}
+        res = self.client.post(
+            "/vision/scan", files=files, headers={"Authorization": "Bearer token"}
+        )
+
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "OK")
+        # Kiểm tra candidate_keywords bao gồm đúng parent 'Chair'
+        call_kwargs = mock_resolve.call_args.kwargs
+        self.assertIn("candidate_keywords", call_kwargs)
+        self.assertIn("Chair", call_kwargs["candidate_keywords"])
 
     # ── 4. Low Confidence Graceful Fallback ───────────────────────────────────
     @patch("app.routers.vision.resolve_flashcard", new_callable=AsyncMock)
@@ -201,7 +249,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             raw_description="a wooden chair in a room",
         )
 
-        async def fake_stream(keyword, redis):
+        async def fake_stream(keyword, redis, **kwargs):
             yield {
                 "event": "vocab_content",
                 "data": {
