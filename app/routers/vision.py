@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from botocore.exceptions import BotoCoreError, ClientError
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from fastapi.responses import StreamingResponse
 from redis.exceptions import RedisError
 
@@ -19,12 +19,14 @@ from app.services.cache_service import (
     stream_flashcard,
 )
 from app.services.degradation_service import DegradationResult, evaluate_vision_result
+from app.services.guest_quota_service import GuestScanLimitError, consume_guest_quota
 from app.services.quota_service import (
     MaintenanceModeError,
     QuotaExceededError,
     check_and_consume_quota,
 )
 from app.services.system_setting_service import fetch_system_settings
+from app.services.vision_service import execute_vision_scan
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +34,46 @@ router = APIRouter()
 
 MAX_IMAGE_SIZE_BYTES = 5 * 1024 * 1024  # 5MB giới hạn direct bytes của AWS Rekognition
 ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png"}
+
+
+@router.post("/scan/guest", response_model=ScanResponse)
+async def scan_image_guest(request: Request, file: UploadFile = File(...)) -> ScanResponse:
+    """Preview a real scan without creating a user or storing a personal flashcard."""
+    if not file.content_type or file.content_type.lower() not in ALLOWED_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail="INVALID_IMAGE_FORMAT")
+    image_bytes = await file.read(MAX_IMAGE_SIZE_BYTES + 1)
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="FILE_EMPTY")
+    if len(image_bytes) > MAX_IMAGE_SIZE_BYTES:
+        raise HTTPException(status_code=413, detail="IMAGE_TOO_LARGE")
+
+    redis = get_redis()
+    try:
+        await consume_guest_quota(request, redis)
+    except GuestScanLimitError as exc:
+        code = str(exc)
+        raise HTTPException(
+            status_code=503 if code in {"MAINTENANCE_MODE", "CLIENT_IP_UNAVAILABLE"} else 429,
+            detail=code,
+            headers={"Retry-After": "10" if code == "GUEST_SLOW_DOWN" else "3600"},
+        ) from exc
+    except RedisError as exc:
+        logger.error("guest_scan_redis_unavailable: %s", exc)
+        raise HTTPException(status_code=503, detail="REDIS_CONNECTION_FAILED") from exc
+
+    try:
+        return await execute_vision_scan(image_bytes, None, redis)
+    except ClientError as exc:
+        if exc.response.get("Error", {}).get("Code") in {"InvalidImageFormatException", "ImageTooLargeException"}:
+            raise HTTPException(status_code=400, detail="INVALID_IMAGE_DATA") from exc
+        logger.error("guest_scan_aws_failure: %s", exc.__class__.__name__)
+        raise HTTPException(status_code=502, detail="AWS_VISION_UNAVAILABLE") from exc
+    except BotoCoreError as exc:
+        logger.error("guest_scan_aws_failure: %s", exc.__class__.__name__)
+        raise HTTPException(status_code=502, detail="AWS_VISION_UNAVAILABLE") from exc
+    except RedisError as exc:
+        logger.error("guest_scan_redis_failure: %s", exc)
+        raise HTTPException(status_code=503, detail="REDIS_CONNECTION_FAILED") from exc
 
 
 @router.post("/scan", response_model=ScanResponse)

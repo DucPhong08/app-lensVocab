@@ -4,6 +4,14 @@ Tài liệu này mô tả chi tiết pipeline xử lý ảnh từ lúc client g�
 
 ---
 
+## Quét thử cho khách
+
+`POST /vision/scan/guest` nhận cùng multipart field `file` (JPG/PNG tối đa 5 MB) và trả cùng `ScanResponse` như `/vision/scan`, nhưng không yêu cầu JWT hay tạo User/flashcard cá nhân. Khách chỉ xem kết quả; `/flashcards/confirm`, lịch sử tài khoản và `/vision/scan/stream` vẫn yêu cầu đăng nhập. Ảnh không được lưu vào tài khoản; từ mới có thể được đưa vào cache từ vựng chung theo pipeline cũ.
+
+Trước khi gọi AWS, server kiểm tra maintenance mode và Redis Lua atomic: mặc định tối đa 3 lượt/IP/ngày UTC, 100 lượt toàn hệ thống/ngày UTC và một lượt mỗi 10 giây/IP. Cấu hình qua `GUEST_DAILY_QUOTA`, `GUEST_GLOBAL_DAILY_QUOTA`, `GUEST_SCAN_INTERVAL_SECONDS`. Redis không sẵn có thì trả 503 (fail closed); hết hạn mức trả 429. Trên Render dùng IP cuối trong `X-Forwarded-For` do proxy thêm vào; ngoài Render không tin header này. Các giới hạn theo IP chỉ chống lạm dụng cơ bản, không phải xác thực danh tính hoặc chống bot phân tán; theo dõi ngân sách AWS khi vận hành.
+
+---
+
 ## 1. Sơ Đồ Tuần Tự (Sequence Flow)
 
 ```
