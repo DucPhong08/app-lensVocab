@@ -47,6 +47,9 @@ class Settings(BaseSettings):
 
     # ── Business Rules ───────────────────────────────────────────────────────
     FREE_DAILY_QUOTA: int = 10
+    GUEST_DAILY_QUOTA: int = 3
+    GUEST_GLOBAL_DAILY_QUOTA: int = 100
+    GUEST_SCAN_INTERVAL_SECONDS: int = 10
     REVIEW_DAILY_CAP: int = 15
     VISION_CONFIDENCE_THRESHOLD: float = 0.50
     SEMANTIC_SIMILARITY_THRESHOLD: float = 0.85

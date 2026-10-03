@@ -26,21 +26,23 @@ def _format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def resolve_max_objects(user: User) -> int:
-    """Tính toán số vật thể tối đa dựa trên cài đặt User và trần của Admin."""
+async def resolve_max_objects(user: User | None) -> int:
+    """Tính toán số vật thể tối đa, áp dụng trần hệ thống cho cả khách."""
     sys_settings = await fetch_system_settings()
+    admin_max = getattr(sys_settings, "max_detected_objects", 5)
+    if user is None:
+        return min(5, admin_max)
     user_max = (
         user.preferences.max_detected_objects
         if user.preferences and hasattr(user.preferences, "max_detected_objects")
         else 5
     )
-    admin_max = getattr(sys_settings, "max_detected_objects", 5)
     return min(user_max, admin_max)
 
 
 async def execute_vision_scan(
     image_bytes: bytes,
-    current_user: User,
+    current_user: User | None,
     redis: Redis,
 ) -> ScanResponse:
     """
@@ -51,7 +53,8 @@ async def execute_vision_scan(
       4. Graceful Degradation (Bedrock Fallback nếu < 50%)
       5. Tra cứu Cache đa tầng / Sinh Bedrock & Polly
     """
-    await check_and_consume_quota(current_user, redis)
+    if current_user is not None:
+        await check_and_consume_quota(current_user, redis)
 
     effective_max = await resolve_max_objects(current_user)
 
