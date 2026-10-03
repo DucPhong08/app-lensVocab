@@ -55,5 +55,9 @@ class Settings(BaseSettings):
     SEMANTIC_SIMILARITY_THRESHOLD: float = 0.85
     VECTOR_INDEX_NAME: str = "vocab_embedding_index"
 
+    # ── Proxy & Network ──────────────────────────────────────────────────────
+    TRUST_PROXY_HEADERS: bool = False
+    TRUSTED_PROXIES: str = "127.0.0.1,::1"
+
 
 settings = Settings()
