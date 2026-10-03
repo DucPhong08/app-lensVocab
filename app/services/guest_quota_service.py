@@ -4,6 +4,7 @@ import hashlib
 import ipaddress
 import os
 from datetime import UTC, datetime, timedelta
+from typing import Any, cast
 
 from fastapi import Request
 from redis.asyncio import Redis
@@ -93,7 +94,7 @@ async def consume_guest_quota(request: Request, redis: Redis) -> None:
     expires_at = int(
         (now + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
     )
-    outcome = await redis.eval(
+    outcome = await cast(Any, redis).eval(
         _GUEST_BUDGET_SCRIPT,
         3,
         f"guest:scan:{day}:{address_hash}",
