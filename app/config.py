@@ -29,8 +29,8 @@ class Settings(BaseSettings):
     # ── AWS Infrastructure (IAM API Keys: Rekognition, Bedrock, Polly) ───────
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
-    AWS_REGION: str = "ap-southeast-1"  # Region chính: Rekognition, Nova Lite, Polly
-    # Titan Embeddings v2 chưa có ở ap-southeast-1 → dùng region riêng nếu đổi sang SIN
+    AWS_REGION: str = "ap-southeast-1"  # Region chính: Rekognition, Polly
+    # Region Bedrock dùng chung cho Nova Lite và Titan; giữ tên env hiện có
     AWS_EMBEDDING_REGION: str = ""  # Nếu để trống → fallback về AWS_REGION
 
     # AWS Bedrock

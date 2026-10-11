@@ -17,7 +17,7 @@ This document supersedes older descriptions of parent/alias cache hits and Redis
 - ReviewLog adds nullable `review_id` and nullable `result` (serialized response). Beanie creates a partial unique `(user_id, review_id)` index only for UUID binary IDs, so legacy logs are unaffected.
 - Due queue applies its cap in Mongo before materializing results. The cap remains per queue request, not a daily total limit.
 - Confirm no longer generates Titan embeddings because scan does not use vector search. Existing embeddings/index/model are retained, and new cards have `embedding=null`. Any future vector feature needs an explicit backfill plan.
-- AWS clients are created under a lock and reused within a process; Nova uses the main region and Titan the embedding region. Clients close at shutdown. Bcrypt runs in a worker thread.
+- AWS clients are created under a lock and reused within a process; Nova and Titan share `AWS_EMBEDDING_REGION` (falling back to `AWS_REGION`), preserving the existing deployment configuration. Rekognition/Polly use `AWS_REGION`. Live testing confirmed Nova Lite works with the existing credentials in `ap-southeast-2`; invoking it in `ap-southeast-1` was denied. Clients close at shutdown. Bcrypt runs in a worker thread.
 
 ## Deploy order
 

@@ -29,7 +29,7 @@ _BOTO_CONFIG = Config(
 
 @lru_cache(maxsize=1)
 def _get_boto3_session() -> boto3.Session:
-    """Session chính: Rekognition, Nova Lite, Polly — dùng AWS_REGION."""
+    """Session chính: Rekognition, Polly — dùng AWS_REGION."""
     return boto3.Session(
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
@@ -39,7 +39,7 @@ def _get_boto3_session() -> boto3.Session:
 
 @lru_cache(maxsize=1)
 def _get_embedding_session() -> boto3.Session:
-    """Session riêng cho Titan Embeddings — dùng AWS_EMBEDDING_REGION nếu có.
+    """Session Bedrock cho Nova và Titan — dùng AWS_EMBEDDING_REGION nếu có.
 
     Titan Embeddings v2 chưa hỗ trợ ap-southeast-1 (Singapore), nên khi đổi
     AWS_REGION sang SIN để giảm latency, cần tách session này để vẫn gọi được
@@ -79,7 +79,8 @@ def _get_rekognition_client():
 
 
 def _get_bedrock_client():
-    return _get_aws_client("bedrock-runtime")
+    # Preserve the shared Nova/Titan region configured in existing deployments.
+    return _get_aws_client("bedrock-runtime", embedding=True)
 
 
 def _get_embedding_client():

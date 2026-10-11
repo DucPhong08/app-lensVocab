@@ -192,7 +192,7 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
             result = await evaluate_vision_result("chair", 85, "office")
             self.assertEqual(result.status, DegradationResult.FALLBACK_CONTEXT)
 
-    def test_aws_clients_are_reused_and_nova_uses_main_region(self):
+    def test_aws_clients_are_reused_and_nova_uses_configured_bedrock_region(self):
         main, embedding = MagicMock(), MagicMock()
         with (
             patch.object(ai_service, "_clients", {}),
@@ -201,10 +201,13 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
         ):
             first = ai_service._get_bedrock_client()
             self.assertIs(first, ai_service._get_bedrock_client())
-            main.client.assert_called_once_with("bedrock-runtime", config=ai_service._BOTO_CONFIG)
-            embedding.client.assert_not_called()
-            ai_service._get_embedding_client()
-            embedding.client.assert_called_once()
+            embedding.client.assert_called_once_with(
+                "bedrock-runtime", config=ai_service._BOTO_CONFIG
+            )
+            main.client.assert_not_called()
+            self.assertIs(first, ai_service._get_embedding_client())
+            ai_service._get_rekognition_client()
+            main.client.assert_called_once_with("rekognition", config=ai_service._BOTO_CONFIG)
             ai_service.close_aws_clients()
             first.close.assert_called_once()
 
