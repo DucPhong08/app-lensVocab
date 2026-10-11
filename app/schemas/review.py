@@ -29,6 +29,8 @@ class SubmitReviewRequest(BaseModel):
         }
     }
 
+    review_id: uuid.UUID | None = None
+
     quality: int = Field(
         ...,
         ge=0,

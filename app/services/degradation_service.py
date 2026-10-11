@@ -4,8 +4,8 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
-from app.config import settings
 from app.services.ai_service import fallback_keyword_from_context
+from app.services.system_setting_service import fetch_system_settings
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +53,8 @@ async def evaluate_vision_result(
     - Nếu confidence thấp hoặc keyword rỗng → Gọi AWS Bedrock fallback từ raw_description
     - Nếu fallback cũng thất bại → Trả về AI_COULD_NOT_RECOGNIZE để client điều hướng nhập tay
     """
-    threshold_percent = _normalize_threshold_percent(settings.VISION_CONFIDENCE_THRESHOLD)
+    system_settings = await fetch_system_settings()
+    threshold_percent = _normalize_threshold_percent(system_settings.vision_confidence_threshold)
 
     if keyword and confidence >= threshold_percent:
         return VisionAnalysis(

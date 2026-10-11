@@ -7,7 +7,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.schemas.review import ReviewCardResponse, SubmitReviewRequest, SubmitReviewResponse
-from app.services.review_service import FlashcardNotFoundError, fetch_today_queue, submit_review
+from app.services.review_service import (
+    FlashcardNotFoundError,
+    ReviewConflictError,
+    fetch_today_queue,
+    submit_review,
+)
 
 router = APIRouter()
 
@@ -38,7 +43,9 @@ async def submit_card_review(
       - quality: 3-5 (nhớ) → tăng interval theo efactor.
     """
     try:
-        return await submit_review(current_user.id, user_flashcard_id, body.quality)
+        return await submit_review(current_user.id, user_flashcard_id, body.quality, body.review_id)
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail="REVIEW_ID_CONFLICT") from exc
     except FlashcardNotFoundError:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

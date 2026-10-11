@@ -54,6 +54,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "INVALID_IMAGE_FORMAT")
+        self.mock_quota.assert_not_awaited()
 
     def test_empty_image_returns_400(self):
         files = {"file": ("empty.jpg", io.BytesIO(b""), "image/jpeg")}
@@ -62,6 +63,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "FILE_EMPTY")
+        self.mock_quota.assert_not_awaited()
 
     def test_image_larger_than_5mb_returns_413(self):
         large_bytes = b"0" * (5 * 1024 * 1024 + 1)
@@ -71,9 +73,10 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.status_code, 413)
         self.assertEqual(res.json()["detail"], "IMAGE_TOO_LARGE")
+        self.mock_quota.assert_not_awaited()
 
     # ── 2. AWS Error Handling Tests ──────────────────────────────────────────
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_aws_invalid_image_data_error_returns_400(self, mock_detect):
         mock_detect.side_effect = ClientError(
             {"Error": {"Code": "InvalidImageFormatException", "Message": "Bad image"}},
@@ -86,7 +89,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "INVALID_IMAGE_DATA")
 
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_aws_service_unavailable_error_returns_502(self, mock_detect):
         mock_detect.side_effect = ClientError(
             {"Error": {"Code": "ThrottlingException", "Message": "Rate exceeded"}},
@@ -100,8 +103,8 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.json()["detail"], "AWS_VISION_UNAVAILABLE")
 
     # ── 3. High Confidence Success Scan ──────────────────────────────────────
-    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_high_confidence_scan_success(self, mock_detect, mock_get_flashcard):
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Chair", 95.0, ["Furniture"], ["Seat"], [])],
@@ -144,8 +147,8 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(sorted(call_kwargs["candidate_keywords"]), sorted(["Seat"]))
 
     # ── 3b. Parents/Aliases Cache Hit ────────────────────────────────────────────
-    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_parent_alias_passed_as_candidates(self, mock_detect, mock_get_flashcard):
         """Khi Rekognition trả về nhãn 'Armchair' với parent 'Chair',
         router phải truyền ['Chair'] vào candidate_keywords để cache resolver
@@ -187,9 +190,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn("Chair", call_kwargs["candidate_keywords"])
 
     # ── 4. Low Confidence Graceful Fallback ───────────────────────────────────
-    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
+    @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
     @patch("app.services.degradation_service.fallback_keyword_from_context", new_callable=AsyncMock)
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_low_confidence_fallback_scan(self, mock_detect, mock_fallback, mock_get_flashcard):
         # Confidence < 50% -> triggers Bedrock fallback
         mock_detect.return_value = VisionResult(
@@ -234,9 +237,10 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(res.status_code, 400)
         self.assertEqual(res.json()["detail"], "FILE_EMPTY")
+        self.mock_quota.assert_not_awaited()
 
-    @patch("app.routers.vision.stream_flashcard")
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.stream_flashcard")
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_scan_stream_success(self, mock_detect, mock_stream_flashcard):
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Chair", 95.0, ["Furniture"], ["Seat"], [])],
@@ -282,9 +286,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"cái ghế"', res.text)
 
     # ── 6. Test Multi-object Detection & Admin Ceiling ────────────────────────
-    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
-    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.fetch_system_settings", new_callable=AsyncMock)
+    @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_capped_by_admin_ceiling(
         self, mock_detect, mock_get_flashcard, mock_get_sys_settings
     ):
@@ -338,9 +342,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data["detected_objects"]), 5)
         self.assertEqual(data["detected_objects"][0]["keyword"], "Obj1")
 
-    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
-    @patch("app.routers.vision.get_flashcard", new_callable=AsyncMock)
-    @patch("app.routers.vision.detect_image_labels", new_callable=AsyncMock)
+    @patch("app.services.vision_service.fetch_system_settings", new_callable=AsyncMock)
+    @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
+    @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_user_lower_than_admin(
         self, mock_detect, mock_get_flashcard, mock_get_sys_settings
     ):

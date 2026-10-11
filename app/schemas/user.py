@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.user import AccountTier, UserPreferences
 
 
 class UpdatePreferencesRequest(BaseModel):
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_null(cls, value):
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
+
     preferred_voice_id: str | None = Field(None, description="Tên giọng đọc AWS Polly")
     voice_speed: float | None = Field(None, description="Tốc độ đọc (0.75, 1.0, 1.25)")
     daily_review_goal: int | None = Field(

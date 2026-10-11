@@ -1,9 +1,16 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class UpdateSystemSettingRequest(BaseModel):
+    @field_validator("*", mode="before")
+    @classmethod
+    def reject_null(cls, value):
+        if value is None:
+            raise ValueError("Field cannot be null")
+        return value
+
     free_daily_quota: int | None = Field(
         None, ge=1, le=1000, description="Hạn mức scan ngày của gói FREE"
     )

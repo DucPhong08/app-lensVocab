@@ -6,10 +6,13 @@ import json
 import logging
 from dataclasses import dataclass
 from functools import lru_cache
+from threading import Lock
+from typing import Annotated
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, ValidationError
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from app.config import settings
@@ -50,20 +53,41 @@ def _get_embedding_session() -> boto3.Session:
     )
 
 
+# Create clients under a lock: a boto3 Session must not be used concurrently.
+_client_lock = Lock()
+_clients: dict[str, object] = {}
+
+
+def _get_aws_client(service: str, *, embedding: bool = False):
+    key = "embedding" if embedding else service
+    with _client_lock:
+        if key not in _clients:
+            session = _get_embedding_session() if embedding else _get_boto3_session()
+            _clients[key] = session.client(service, config=_BOTO_CONFIG)
+        return _clients[key]
+
+
+def close_aws_clients() -> None:
+    with _client_lock:
+        for client in _clients.values():
+            client.close()
+        _clients.clear()
+
+
 def _get_rekognition_client():
-    return _get_boto3_session().client("rekognition", config=_BOTO_CONFIG)
+    return _get_aws_client("rekognition")
 
 
 def _get_bedrock_client():
-    return _get_embedding_session().client("bedrock-runtime", config=_BOTO_CONFIG)
+    return _get_aws_client("bedrock-runtime")
 
 
 def _get_embedding_client():
-    return _get_embedding_session().client("bedrock-runtime", config=_BOTO_CONFIG)
+    return _get_aws_client("bedrock-runtime", embedding=True)
 
 
 def _get_polly_client():
-    return _get_boto3_session().client("polly", config=_BOTO_CONFIG)
+    return _get_aws_client("polly")
 
 
 class BedrockOutputError(Exception):
@@ -206,14 +230,17 @@ async def detect_image_labels(
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-@dataclass
-class GeneratedFlashcard:
-    keyword: str
-    pronunciation: str  # /tʃer/
-    meaning_vi: str  # Nghĩa tiếng Việt
-    example_1: str  # Câu ví dụ 1
-    example_2: str  # Câu ví dụ 2
-    related_words: list[str]  # ["seat", "sofa", "stool"]
+VocabText = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)]
+
+
+class GeneratedFlashcard(BaseModel):
+    model_config = ConfigDict(strict=True)
+    keyword: VocabText
+    pronunciation: VocabText
+    meaning_vi: VocabText
+    example_1: VocabText
+    example_2: VocabText
+    related_words: list[VocabText] = Field(min_length=1, max_length=10)
 
 
 # Role/Goal/Output viết bằng tiếng Anh để giảm token input (tiếng Việt có dấu tốn
@@ -261,7 +288,10 @@ def _extract_json(text_output: str) -> dict:
         if text_output.startswith("json"):
             text_output = text_output[4:].strip()
     try:
-        return json.loads(text_output)
+        data = json.loads(text_output)
+        if not isinstance(data, dict):
+            raise BedrockOutputError("Expected a JSON object from Bedrock")
+        return data
     except json.JSONDecodeError as exc:
         raise BedrockOutputError(f"invalid JSON from Bedrock: {text_output!r}") from exc
 
@@ -286,21 +316,13 @@ def _sync_generate_content(keyword: str) -> GeneratedFlashcard:
     text_output = response["output"]["message"]["content"][0]["text"]
     data = _extract_json(text_output)
 
-    return GeneratedFlashcard(
-        keyword=keyword.lower().strip(),
-        pronunciation=data.get("pronunciation", ""),
-        meaning_vi=data.get("meaning_vi", ""),
-        example_1=data.get("example_1", ""),
-        example_2=data.get("example_2", ""),
-        related_words=data.get("related_words", []),
-    )
+    try:
+        return GeneratedFlashcard.model_validate({**data, "keyword": keyword.lower().strip()})
+    except ValidationError as exc:
+        raise BedrockOutputError("Invalid flashcard content from Bedrock") from exc
 
 
 async def generate_flashcard_content(keyword: str) -> GeneratedFlashcard:
-    # TODO: check cache/DB theo `keyword` trước khi gọi Bedrock ở đây — nội dung
-    # flashcard gần như bất biến theo từ, nên gọi lại Bedrock cho từ đã sinh
-    # trước đó là chi phí tránh được lớn nhất trong luồng này (lớn hơn nhiều so
-    # với việc rút gọn token của prompt).
     return await asyncio.to_thread(_sync_generate_content, keyword)
 
 
@@ -377,7 +399,8 @@ def _sync_synthesize_speech(
             Engine="standard",
         )
 
-    audio_stream = response["AudioStream"].read()
+    with response["AudioStream"] as stream:
+        audio_stream = stream.read()
     return base64.b64encode(audio_stream).decode("utf-8")
 
 
@@ -431,7 +454,12 @@ def _sync_fallback_keyword(description: str) -> str | None:
 
     text_output = response["output"]["message"]["content"][0]["text"]
     data = _extract_json(text_output)
-    return data.get("keyword")
+    keyword = data.get("keyword")
+    if keyword is None:
+        return None
+    if not isinstance(keyword, str) or not keyword.strip() or len(keyword) > 100:
+        raise BedrockOutputError("Invalid fallback keyword")
+    return None if keyword.strip().lower() == "null" else keyword.strip().lower()
 
 
 async def fallback_keyword_from_context(description: str) -> str | None:

@@ -8,12 +8,16 @@ from pymongo.errors import DuplicateKeyError
 
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 from app.schemas.flashcard import ConfirmFlashcardRequest, FlashcardItemResponse
-from app.services.cache_service import FlashcardPayload, save_global_flashcard
+from app.services.cache_service import _get_from_redis, save_global_flashcard
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
 
 _DEFAULT_EFACTOR = 2.5
+
+
+class DraftExpiredError(Exception):
+    pass
 
 
 async def confirm_card(
@@ -22,20 +26,12 @@ async def confirm_card(
     redis: Redis,
 ) -> FlashcardItemResponse:
     """Xác nhận thẻ nháp: lưu GlobalFlashcard + tạo/cập nhật UserFlashcard CONFIRMED."""
-    payload = FlashcardPayload(
-        keyword=data.keyword,
-        pronunciation=data.pronunciation,
-        meaning_vi=data.meaning_vi,
-        example_1=data.example_1,
-        example_2=data.example_2,
-        related_words=data.related_words,
-        audio_base64=data.audio_base64,
-        source="bedrock",
-        is_draft=False,
-    )
-
-    # 1. Lưu GlobalFlashcard
-    global_card = await save_global_flashcard(payload, redis)
+    global_card = await GlobalFlashcard.find_one({"keyword": data.keyword})
+    if global_card is None:
+        payload = await _get_from_redis(redis, data.keyword)
+        if payload is None or payload.keyword != data.keyword:
+            raise DraftExpiredError("DRAFT_EXPIRED")
+        global_card = await save_global_flashcard(payload, redis)
 
     # 2. Tạo hoặc cập nhật UserFlashcard (dùng dict query để an toàn cả khi test offline)
     user_card = await UserFlashcard.find_one(
@@ -61,12 +57,11 @@ async def confirm_card(
             user_card = await UserFlashcard.find_one(
                 {"user_id": user_id, "global_flashcard_id": global_card.id}
             )
-            if user_card:
-                user_card.status = FlashcardStatus.CONFIRMED
-                await user_card.save()
+            if user_card is None:
+                raise
+            await user_card.set({"status": FlashcardStatus.CONFIRMED})
     else:
-        user_card.status = FlashcardStatus.CONFIRMED
-        await user_card.save()
+        await user_card.set({"status": FlashcardStatus.CONFIRMED})
 
     return FlashcardItemResponse(
         user_flashcard_id=user_card.id,

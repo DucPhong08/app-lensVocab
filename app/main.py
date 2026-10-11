@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 from http import HTTPStatus
 
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -23,6 +24,9 @@ async def lifespan(app: FastAPI):
     get_motor_client()
     await setup_beanie()
     yield
+    from app.services.ai_service import close_aws_clients
+
+    close_aws_clients()
     await close_redis_pool()
     close_motor_client()
 
@@ -85,8 +89,8 @@ def create_app() -> FastAPI:
                 "status_code": 422,
                 "message": "VALIDATION_ERROR",
                 "error": "Unprocessable Entity",
-                "data": exc.errors(),
-                "detail": exc.errors(),
+                "data": jsonable_encoder(exc.errors()),
+                "detail": jsonable_encoder(exc.errors()),
             },
         )
 
