@@ -3,9 +3,11 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 from beanie import Document
 from pydantic import Field
+from pymongo import IndexModel
 
 
 class ReviewQuality(int, enum.Enum):
@@ -22,6 +24,9 @@ class ReviewLog(Document):
     user_id: uuid.UUID
     user_flashcard_id: uuid.UUID
 
+    review_id: uuid.UUID | None = None
+    result: dict[str, Any] | None = None
+
     quality: int
     interval_before: int
     interval_after: int
@@ -32,4 +37,12 @@ class ReviewLog(Document):
 
     class Settings:
         name = "review_logs"
-        indexes = ["user_id", "reviewed_at"]
+        indexes = [
+            "user_id",
+            "reviewed_at",
+            IndexModel(
+                [("user_id", 1), ("review_id", 1)],
+                unique=True,
+                partialFilterExpression={"review_id": {"$type": "binData"}},
+            ),
+        ]

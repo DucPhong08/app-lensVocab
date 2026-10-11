@@ -1,5 +1,7 @@
 # 01. Tổng Quan Kiến Trúc & Thiết Kế Dữ Liệu
 
+> Cập nhật 2026-10-11: xem [05_OPTIMIZATION_ROLLOUT.md](05_OPTIMIZATION_ROLLOUT.md) cho contract confirm/review, quyền admin, exact cache và quota Mongo hiện tại. Nội dung lịch sử bên dưới có thể mô tả luồng cũ.
+
 Tài liệu này mô tả kiến trúc tổng thể, mô hình cấu hình 3 tầng, thiết kế dữ liệu và các quyết định kiến trúc quan trọng của hệ thống **LensVocab Backend**.
 
 ---

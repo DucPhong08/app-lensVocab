@@ -32,7 +32,7 @@ async def update_preferences(
     validate_user_preferences(current_user.account_tier, new_pref)
 
     current_user.preferences = new_pref
-    await current_user.save()
+    await current_user.set({"preferences": new_pref.model_dump()})
 
     policy = resolve_tier_policy(current_user.account_tier)
     return UserPreferencesResponse(

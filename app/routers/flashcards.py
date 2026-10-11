@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
+from redis.exceptions import RedisError
 
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.redis_client import get_redis
 from app.schemas.flashcard import ConfirmFlashcardRequest, FlashcardItemResponse
-from app.services.flashcard_service import confirm_card, list_cards
+from app.services.flashcard_service import DraftExpiredError, confirm_card, list_cards
 
 router = APIRouter()
 
@@ -23,7 +24,12 @@ async def confirm_flashcard(
       2. Tạo bản ghi UserFlashcard cho người dùng với trạng thái CONFIRMED.
     """
     redis = get_redis()
-    return await confirm_card(current_user.id, body, redis)
+    try:
+        return await confirm_card(current_user.id, body, redis)
+    except DraftExpiredError as exc:
+        raise HTTPException(status_code=409, detail="DRAFT_EXPIRED") from exc
+    except RedisError as exc:
+        raise HTTPException(status_code=503, detail="REDIS_CONNECTION_FAILED") from exc
 
 
 @router.get("/flashcards", response_model=list[FlashcardItemResponse])

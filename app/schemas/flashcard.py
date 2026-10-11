@@ -1,34 +1,18 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from pydantic import BaseModel
+from pydantic import BaseModel, StringConstraints
 
 from app.models.flashcard import FlashcardStatus
 
 
 class ConfirmFlashcardRequest(BaseModel):
-    model_config = {
-        "json_schema_extra": {
-            "example": {
-                "keyword": "chair",
-                "pronunciation": "/tʃer/",
-                "meaning_vi": "cái ghế",
-                "example_1": "I sit on a chair.",
-                "example_2": "This wooden chair is sturdy.",
-                "related_words": ["seat", "sofa", "stool"],
-                "audio_base64": None,
-            }
-        }
-    }
-
-    keyword: str
-    pronunciation: str | None = None
-    meaning_vi: str
-    example_1: str
-    example_2: str
-    related_words: list[str] = []
-    audio_base64: str | None = None
+    # Legacy content fields are ignored: only the server owns shared vocabulary.
+    keyword: Annotated[
+        str, StringConstraints(strip_whitespace=True, to_lower=True, min_length=1, max_length=100)
+    ]
 
 
 class FlashcardItemResponse(BaseModel):

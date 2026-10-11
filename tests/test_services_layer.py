@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 from app.models.review import ReviewLog
@@ -16,6 +16,19 @@ from app.services.user_service import read_preferences, update_preferences
 
 class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
+        session = MagicMock()
+        session.__aenter__ = AsyncMock(return_value=session)
+        session.__aexit__ = AsyncMock(return_value=False)
+
+        async def transaction(callback):
+            return await callback(session)
+
+        session.with_transaction = transaction
+        client = MagicMock()
+        client.start_session = AsyncMock(return_value=session)
+        patcher = patch("app.services.review_service.get_motor_client", return_value=client)
+        patcher.start()
+        self.addCleanup(patcher.stop)
         self.user_id = uuid.uuid4()
         self.mock_user = User.model_construct(
             id=self.user_id,
@@ -36,7 +49,7 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res.allow_neural_voice)
 
     async def test_update_preferences_saves_to_user(self):
-        with patch.object(User, "save", new_callable=AsyncMock) as mock_save:
+        with patch.object(User, "set", new_callable=AsyncMock) as mock_save:
             req = UpdatePreferencesRequest(daily_review_goal=18, max_detected_objects=4)
             res = await update_preferences(self.mock_user, req)
             mock_save.assert_called_once()
@@ -44,7 +57,7 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(res.preferences.max_detected_objects, 4)
 
     # ── 2. Flashcard Service Tests ───────────────────────────────────────────
-    @patch("app.services.flashcard_service.save_global_flashcard", new_callable=AsyncMock)
+    @patch.object(GlobalFlashcard, "find_one", new_callable=AsyncMock)
     @patch.object(UserFlashcard, "find_one", new_callable=AsyncMock)
     @patch.object(UserFlashcard, "insert", new_callable=AsyncMock)
     async def test_confirm_card_creates_user_card(

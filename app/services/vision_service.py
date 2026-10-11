@@ -12,7 +12,6 @@ from app.schemas.vision import BoundingBoxSchema, DetectedObjectItem, ScanRespon
 from app.services.ai_service import detect_image_labels
 from app.services.cache_service import FlashcardPayload, get_flashcard, stream_flashcard
 from app.services.degradation_service import DegradationResult, evaluate_vision_result
-from app.services.quota_service import check_and_consume_quota
 from app.services.system_setting_service import fetch_system_settings
 
 if TYPE_CHECKING:
@@ -47,15 +46,12 @@ async def execute_vision_scan(
 ) -> ScanResponse:
     """
     Toàn bộ nghiệp vụ quét ảnh:
-      1. Khấu trừ quota (Redis atomic)
+      1. Router đã validate file và khấu trừ quota
       2. Giới hạn số vật thể theo trần Admin
       3. Nhận diện qua AWS Rekognition
       4. Graceful Degradation (Bedrock Fallback nếu < 50%)
       5. Tra cứu Cache đa tầng / Sinh Bedrock & Polly
     """
-    if current_user is not None:
-        await check_and_consume_quota(current_user, redis)
-
     effective_max = await resolve_max_objects(current_user)
 
     vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)

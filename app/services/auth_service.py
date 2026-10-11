@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
 
@@ -77,7 +78,7 @@ async def register_user(email: str, password: str, display_name: str | None = No
 
     user = User(
         email=normalized_email,
-        hashed_password=hash_password(password),
+        hashed_password=await asyncio.to_thread(hash_password, password),
         display_name=display_name,
     )
     await user.insert()
@@ -90,7 +91,7 @@ async def authenticate_user(email: str, password: str):
 
     normalized_email = email.strip().lower()
     user = await User.find_one(User.email == normalized_email)
-    if user is None or not verify_password(password, user.hashed_password):
+    if user is None or not await asyncio.to_thread(verify_password, password, user.hashed_password):
         raise InvalidCredentialsError("INVALID_CREDENTIALS")
 
     if not user.is_active:

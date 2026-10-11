@@ -1,19 +1,16 @@
 from __future__ import annotations
 
 import logging
-from datetime import UTC, date, datetime
+from datetime import UTC, datetime
 
 import redis.asyncio as aioredis
+from beanie.odm.utils.encoder import Encoder
+from pymongo import ReturnDocument
 
-from app.config import settings
 from app.models.user import AccountTier, User
 from app.services.system_setting_service import fetch_system_settings
 
 logger = logging.getLogger(__name__)
-
-
-def _quota_redis_key(user_id: str) -> str:
-    return f"quota:{user_id}"
 
 
 class QuotaExceededError(Exception):
@@ -43,38 +40,31 @@ async def check_and_consume_quota(user: User, redis: aioredis.Redis) -> None:
     else:
         tier_daily_quota = sys_settings.free_daily_quota
 
-    today: date = datetime.now(UTC).date()
-
-    if user.quota_reset_date != today:
-        user.quota_reset_date = today
-        user.daily_quota_left = tier_daily_quota
-        user.updated_at = datetime.now(UTC)
-        await user.save()
-        await redis.delete(_quota_redis_key(str(user.id)))
-
-    redis_key = _quota_redis_key(str(user.id))
-
-    # Seed key atomically bằng NX — nếu key đã tồn tại (request khác vừa seed
-    # hoặc đã decrement trước đó), lệnh này no-op thay vì ghi đè giá trị đang
-    # có, tránh "hoàn" ngược lại quota đã bị request khác trừ.
-    await redis.set(redis_key, user.daily_quota_left, ex=settings.REDIS_QUOTA_TTL, nx=True)
-
-    # DECR trước, check kết quả sau — DECR của Redis atomic ở tầng single
-    # command, nên nhiều request đồng thời sẽ không bao giờ cùng "thấy" quota
-    # còn dương rồi cùng được duyệt như kiểu GET-rồi-check cũ.
-    new_quota = await redis.decr(redis_key)
-
-    if new_quota < 0:
-        # Khôi phục lại để counter không tụt âm vô hạn qua nhiều request bị từ
-        # chối liên tục (vd client retry dồn dập khi đã hết quota).
-        await redis.incr(redis_key)
-        logger.info("quota_exceeded user_id=%s tier=%s", user.id, user.account_tier)
-        raise QuotaExceededError("QUOTA_EXCEEDED")
-
-    user.daily_quota_left = new_quota
-    user.updated_at = datetime.now(UTC)
-    await user.save()
-
-    logger.debug(
-        "quota_consumed user_id=%s remaining=%d tier=%s", user.id, new_quota, user.account_tier
+    # Keep the existing fail-closed policy when the scan cache is unavailable.
+    await redis.ping()
+    now = datetime.now(UTC)
+    today = now.date()
+    same_day = {"$eq": ["$quota_reset_date", today]}
+    # Mongo is the single durable quota counter; stale User snapshots and Redis
+    # eviction cannot reset a budget that another request has already consumed.
+    remaining = {"$cond": [same_day, "$daily_quota_left", tier_daily_quota]}
+    document = await User.get_motor_collection().find_one_and_update(
+        Encoder().encode({"_id": user.id, "is_active": True, "$expr": {"$gt": [remaining, 0]}}),
+        Encoder().encode(
+            [
+                {
+                    "$set": {
+                        "daily_quota_left": {"$subtract": [remaining, 1]},
+                        "quota_reset_date": today,
+                        "updated_at": now,
+                    }
+                }
+            ]
+        ),
+        return_document=ReturnDocument.AFTER,
     )
+    if document is None:
+        raise QuotaExceededError("QUOTA_EXCEEDED")
+    user.daily_quota_left = document["daily_quota_left"]
+    user.quota_reset_date = today
+    user.updated_at = now

@@ -1,5 +1,7 @@
 # 02. Chi Tiết Luồng AI Vision & Multi-Tier Cache
 
+> Cập nhật 2026-10-11: xem [05_OPTIMIZATION_ROLLOUT.md](05_OPTIMIZATION_ROLLOUT.md) cho contract confirm/review, quyền admin, exact cache và quota Mongo hiện tại. Nội dung lịch sử bên dưới có thể mô tả luồng cũ.
+
 Tài liệu này mô tả chi tiết pipeline xử lý ảnh từ lúc client gửi request lên endpoint `POST /vision/scan` cho đến khi trả về flashcard hoàn chỉnh.
 
 ---

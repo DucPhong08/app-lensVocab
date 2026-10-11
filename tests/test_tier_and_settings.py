@@ -8,6 +8,7 @@ from starlette.testclient import TestClient
 
 from app.dependencies.auth import get_current_user
 from app.main import app
+from app.models.setting import SystemSetting
 from app.models.user import AccountTier, User, UserPreferences
 from app.services.quota_service import MaintenanceModeError, check_and_consume_quota
 from app.services.system_setting_service import update_system_settings
@@ -17,6 +18,9 @@ from app.services.tier_service import TierPolicyViolation, validate_user_prefere
 class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.client = TestClient(app, raise_server_exceptions=False)
+        settings_save = patch.object(SystemSetting, "save", new_callable=AsyncMock)
+        settings_save.start()
+        self.addCleanup(settings_save.stop)
         self.free_user = User.model_construct(
             id=uuid.uuid4(),
             email="free_user@example.com",
@@ -37,7 +41,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             is_active=True,
             preferences=UserPreferences(),
         )
-        self.save_patcher = patch.object(User, "save", new_callable=AsyncMock)
+        self.save_patcher = patch.object(User, "set", new_callable=AsyncMock)
         self.mock_save = self.save_patcher.start()
 
     def tearDown(self):
@@ -126,6 +130,8 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
 
     # ── 3. Test Admin System Settings API ────────────────────────────────────
     def test_get_and_patch_admin_settings(self):
+        self.premium_user.is_admin = True
+
         async def override_user():
             return self.premium_user
 

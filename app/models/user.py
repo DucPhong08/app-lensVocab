@@ -37,6 +37,7 @@ class User(Document):
     daily_quota_left: int = _DEFAULT_FREE_QUOTA
     quota_reset_date: date | None = None
 
+    is_admin: bool = False
     is_active: bool = True
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

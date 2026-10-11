@@ -1,5 +1,7 @@
 # 03. Thuật Toán Lặp Lại Ngắt Quãng SM-2 (Spaced Repetition)
 
+> Cập nhật 2026-10-11: xem [05_OPTIMIZATION_ROLLOUT.md](05_OPTIMIZATION_ROLLOUT.md) cho contract confirm/review, quyền admin, exact cache và quota Mongo hiện tại. Nội dung lịch sử bên dưới có thể mô tả luồng cũ.
+
 Tài liệu này mô tả chi tiết nguyên lý, công thức toán học và cách cài đặt thuật toán **SuperMemo-2 (SM-2)** trong dự án LensVocab để tối ưu hóa khả năng ghi nhớ từ vựng cho người học.
 
 ---

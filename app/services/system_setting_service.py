@@ -59,7 +59,7 @@ async def fetch_system_settings() -> SystemSetting:
 async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:
     """Cập nhật cài đặt hệ thống của Quản trị viên."""
     global _cached_setting
-    doc = await fetch_system_settings()
+    doc = (await fetch_system_settings()).model_copy(deep=True)
 
     allowed_fields = {
         "free_daily_quota",
@@ -77,10 +77,7 @@ async def update_system_settings(updates: dict[str, Any]) -> SystemSetting:
             setattr(doc, key, value)
 
     doc.updated_at = datetime.now(UTC)
-    try:
-        await doc.save()
-    except Exception as exc:
-        logger.warning("system_setting_save_to_db_failed: %s", exc)
+    await doc.save()
 
     _cached_setting = doc
     return doc
