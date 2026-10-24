@@ -37,3 +37,5 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 - [06. MVP scan, phân trang, audio và cấu hình proxy](06_MVP_SCAN_AND_DELIVERY.md) — hành vi hiện tại và triển khai đồng bộ backend/UI.
 
 - [07. Username, email tùy chọn và đăng nhập Google](07_USERNAME_AND_GOOGLE_AUTH.md) — API, index migration và cấu hình OAuth mobile/backend.
+
+- [08. Ảnh riêng của thẻ từ](08_PERSONAL_CARD_IMAGES.md) — S3 private, cắt ảnh, phân quyền, API và cấu hình bucket.

@@ -65,3 +65,7 @@ Kiểm thử MongoDB thật là opt-in, chỉ dùng replica set local có thể 
 ## Tài khoản và Google OAuth
 
 Đăng ký bằng `username` + `password`; `email` không bắt buộc. Tài khoản email cũ vẫn đăng nhập được. Đã có `POST /auth/google` và `POST /auth/google/link`; cần OAuth Client ID thật trước khi dùng. Xem [hướng dẫn cấu hình và index migration](docs/07_USERNAME_AND_GOOGLE_AUTH.md).
+
+## Ảnh cá nhân trên thẻ
+
+Thẻ đã lưu hỗ trợ ảnh riêng theo user qua `PUT/GET/DELETE /flashcards/{id}/image`. Ảnh được xử lý, bỏ metadata và lưu vào S3 private; để trống bucket thì upload tắt. Xem [cấu hình và hành vi ảnh](docs/08_PERSONAL_CARD_IMAGES.md).

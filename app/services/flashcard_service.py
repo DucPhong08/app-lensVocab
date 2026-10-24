@@ -15,6 +15,7 @@ from app.schemas.flashcard import (
     FlashcardText,
 )
 from app.services.cache_service import _get_from_redis, save_global_flashcard
+from app.services.card_image_service import card_image_urls
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -69,6 +70,7 @@ async def confirm_card(
     else:
         await user_card.set({"status": FlashcardStatus.CONFIRMED})
 
+    image_urls = await card_image_urls([user_card])
     return FlashcardItemResponse(
         user_flashcard_id=user_card.id,
         global_flashcard_id=global_card.id,
@@ -79,6 +81,8 @@ async def confirm_card(
         example_2=global_card.example_2,
         related_words=global_card.related_words,
         audio_base64=global_card.audio_base64,
+        image_url=image_urls.get(user_card.id),
+        has_image=bool(user_card.image_key),
         status=user_card.status,
         interval=user_card.interval,
         repetitions=user_card.repetitions,
@@ -124,6 +128,7 @@ async def list_card_page(
         await GlobalFlashcard.find({"_id": {"$in": global_ids}}).project(FlashcardText).to_list()
     )
     global_map = {card.id: card for card in global_cards}
+    image_urls = await card_image_urls(user_cards)
     items = []
     for card in user_cards:
         content = global_map.get(card.global_flashcard_id)
@@ -140,6 +145,8 @@ async def list_card_page(
                 example_2=content.example_2,
                 related_words=content.related_words,
                 audio_base64=None,
+                image_url=image_urls.get(card.id),
+                has_image=bool(card.image_key),
                 status=card.status,
                 interval=card.interval,
                 repetitions=card.repetitions,

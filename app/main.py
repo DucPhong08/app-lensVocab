@@ -25,7 +25,9 @@ async def lifespan(app: FastAPI):
     await setup_beanie()
     yield
     from app.services.ai_service import close_aws_clients
+    from app.services.card_image_service import close_storage_client
 
+    close_storage_client()
     close_aws_clients()
     await close_redis_pool()
     close_motor_client()

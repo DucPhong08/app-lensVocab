@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     POLLY_OUTPUT_FORMAT: str = "mp3"
     POLLY_ENGINE: Literal["standard", "neural"] = "standard"
 
+    # Private object storage; an empty bucket disables image uploads.
+    S3_IMAGE_BUCKET: str = ""
+    S3_IMAGE_REGION: str = ""
+    S3_IMAGE_URL_TTL_SECONDS: int = Field(3600, ge=60, le=86400)
+
     # ── Business Rules ───────────────────────────────────────────────────────
     FREE_DAILY_QUOTA: int = 10
     GUEST_DAILY_QUOTA: int = 3

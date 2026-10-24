@@ -192,3 +192,70 @@ class MongoIntegrationTests(unittest.IsolatedAsyncioTestCase):
                 await google.link_google(second, "test-token")
         self.assertEqual((await User.get(self.user.id)).google_sub, "test-sub")
         self.assertIsNone((await User.get(second.id)).google_sub)
+
+    async def test_personal_photos_are_isolated_even_when_the_global_word_is_shared(self):
+        import io
+        from unittest.mock import MagicMock
+
+        from PIL import Image
+
+        from app.services import card_image_service as images
+        from app.services.flashcard_service import list_card_page
+
+        output = io.BytesIO()
+        Image.new("RGB", (20, 20), "red").save(output, "JPEG")
+        other_user = await User(username="other_learner").insert()
+        other_card = await UserFlashcard(
+            user_id=other_user.id,
+            global_flashcard_id=self.global_card.id,
+            status=FlashcardStatus.CONFIRMED,
+        ).insert()
+        storage = MagicMock()
+        storage.generate_presigned_url.side_effect = lambda *args, **kwargs: (
+            "https://private.example/" + kwargs["Params"]["Key"]
+        )
+        with (
+            patch.object(images.settings, "S3_IMAGE_BUCKET", "fixture-private"),
+            patch.object(images, "_s3_client", return_value=storage),
+        ):
+            await images.set_card_image(self.user.id, self.card.id, output.getvalue())
+            await images.set_card_image(other_user.id, other_card.id, output.getvalue())
+            page = await list_card_page(self.user.id)
+            self.assertTrue(page.items[0].has_image)
+            self.assertIn(self.user.id.hex, page.items[0].image_url)
+            self.assertNotIn(other_user.id.hex, page.items[0].image_url)
+            with self.assertRaisesRegex(images.CardImageError, "FLASHCARD_NOT_FOUND"):
+                await images.get_card_image(other_user.id, self.card.id)
+            await images.delete_card_image(self.user.id, self.card.id)
+            self.assertIsNone((await UserFlashcard.get(self.card.id)).image_key)
+            self.assertIsNotNone((await UserFlashcard.get(other_card.id)).image_key)
+
+    async def test_concurrent_photo_updates_preserve_only_the_winning_object_reference(self):
+        import io
+        from threading import Barrier
+        from unittest.mock import MagicMock
+
+        from PIL import Image
+
+        from app.services import card_image_service as images
+
+        output = io.BytesIO()
+        Image.new("RGB", (20, 20), "blue").save(output, "JPEG")
+        storage = MagicMock()
+        barrier = Barrier(2)
+        storage.put_object.side_effect = lambda **kwargs: barrier.wait(timeout=10)
+        storage.generate_presigned_url.return_value = "https://private.example/signed"
+        with (
+            patch.object(images.settings, "S3_IMAGE_BUCKET", "fixture-private"),
+            patch.object(images, "_s3_client", return_value=storage),
+        ):
+            results = await asyncio.gather(
+                images.set_card_image(self.user.id, self.card.id, output.getvalue()),
+                images.set_card_image(self.user.id, self.card.id, output.getvalue()),
+                return_exceptions=True,
+            )
+        self.assertEqual(sum(isinstance(result, images.CardImageError) for result in results), 1)
+        stored = await UserFlashcard.get(self.card.id)
+        self.assertIsNotNone(stored.image_key)
+        storage.delete_object.assert_called_once()
+        self.assertNotEqual(storage.delete_object.call_args.kwargs["Key"], stored.image_key)

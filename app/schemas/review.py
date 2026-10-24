@@ -14,6 +14,8 @@ class ReviewCardResponse(BaseModel):
     example_2: str
     related_words: list[str]
     audio_base64: str | None
+    image_url: str | None = None
+    has_image: bool = False
     interval: int
     repetitions: int
     efactor: float
