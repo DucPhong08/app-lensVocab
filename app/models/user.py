@@ -3,10 +3,10 @@ from __future__ import annotations
 import enum
 import uuid
 from datetime import UTC, date, datetime
-from typing import Annotated
 
-from beanie import Document, Indexed
+from beanie import Document
 from pydantic import BaseModel, Field
+from pymongo import IndexModel
 
 _DEFAULT_FREE_QUOTA = 10
 
@@ -28,8 +28,10 @@ class UserPreferences(BaseModel):
 
 class User(Document):
     id: uuid.UUID = Field(default_factory=uuid.uuid4)
-    email: Annotated[str, Indexed(unique=True)]
-    hashed_password: str
+    username: str | None = None  # Existing email accounts remain valid.
+    email: str | None = None
+    hashed_password: str | None = Field(default=None, repr=False)
+    google_sub: str | None = Field(default=None, repr=False)
     display_name: str | None = None
     account_tier: AccountTier = AccountTier.FREE
     preferences: UserPreferences = Field(default_factory=UserPreferences)
@@ -44,4 +46,12 @@ class User(Document):
 
     class Settings:
         name = "users"
-        indexes = ["email"]
+        indexes = [
+            IndexModel(
+                field,
+                unique=True,
+                name=f"{field}_unique_present",
+                partialFilterExpression={field: {"$type": "string"}},
+            )
+            for field in ("email", "username", "google_sub")
+        ]

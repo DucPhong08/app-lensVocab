@@ -15,7 +15,8 @@ Backend FastAPI cho ứng dụng học từ vựng tiếng Anh từ ảnh. Mỗi
 
 | Method | Endpoint | Hành vi |
 | --- | --- | --- |
-| POST | `/auth/register`, `/auth/login` | Email/password, trả access token |
+| POST | `/auth/register`, `/auth/login` | Username/password; email tùy chọn khi đăng ký, hỗ trợ email tài khoản cũ khi đăng nhập; trả access token |
+| POST | `/auth/google`, `/auth/google/link` | Đăng nhập Google hoặc liên kết vào tài khoản hiện tại |
 | GET | `/auth/me` | Thông tin tài khoản, quota và preferences |
 | GET/PATCH | `/users/me/preferences` | Mục tiêu ôn, tốc độ phát trên app, số nhãn hiển thị |
 | POST | `/vision/scan/guest` | Quét thử, có quota Redis và cooldown |
@@ -60,3 +61,7 @@ PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover tests
 ```
 
 Kiểm thử MongoDB thật là opt-in, chỉ dùng replica set local có thể xóa bỏ; xem [hướng dẫn kiểm thử](docs/05_OPTIMIZATION_ROLLOUT.md). Unit test mô phỏng AWS/Redis/Mongo, không chứng minh chất lượng nhận diện hay độ trễ thực tế.
+
+## Tài khoản và Google OAuth
+
+Đăng ký bằng `username` + `password`; `email` không bắt buộc. Tài khoản email cũ vẫn đăng nhập được. Đã có `POST /auth/google` và `POST /auth/google/link`; cần OAuth Client ID thật trước khi dùng. Xem [hướng dẫn cấu hình và index migration](docs/07_USERNAME_AND_GOOGLE_AUTH.md).

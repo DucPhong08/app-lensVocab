@@ -46,12 +46,16 @@ class AuthValidationTests(unittest.IsolatedAsyncioTestCase):
         for password in ("x" * 73, "ắ" * 25):
             with self.subTest(byte_length=len(password.encode("utf-8"))):
                 with self.assertRaises(ValidationError):
-                    RegisterRequest(email="learner@example.com", password=password)
+                    RegisterRequest(
+                        username="learner", email="learner@example.com", password=password
+                    )
 
     async def test_registration_accepts_exactly_72_bytes_without_modifying_password(self):
         for password in ("x" * 72, "ắ" * 24, " pass123 "):
             with self.subTest(byte_length=len(password.encode("utf-8"))):
-                body = RegisterRequest(email="learner@example.com", password=password)
+                body = RegisterRequest(
+                    username="learner", email="learner@example.com", password=password
+                )
                 self.assertEqual(body.password, password)
 
     async def test_long_password_is_rejected_before_registration_and_never_echoed(self):
@@ -62,7 +66,8 @@ class AuthValidationTests(unittest.IsolatedAsyncioTestCase):
                 transport=httpx.ASGITransport(app=app), base_url="http://test"
             ) as client:
                 response = await client.post(
-                    "/auth/register", json={"email": user.email, "password": password}
+                    "/auth/register",
+                    json={"username": "learner", "email": user.email, "password": password},
                 )
         self.assertEqual(response.status_code, 422)
         self.assertNotIn(password, response.text)
@@ -75,7 +80,8 @@ class AuthValidationTests(unittest.IsolatedAsyncioTestCase):
             transport=httpx.ASGITransport(app=app), base_url="http://test"
         ) as client:
             response = await client.post(
-                "/auth/register", json={"email": "learner@example.com", "password": password}
+                "/auth/register",
+                json={"username": "learner", "email": "learner@example.com", "password": password},
             )
         self.assertEqual(response.status_code, 422)
         self.assertNotIn(password, response.text)
@@ -87,7 +93,8 @@ class AuthValidationTests(unittest.IsolatedAsyncioTestCase):
                 transport=httpx.ASGITransport(app=app), base_url="http://test"
             ) as client:
                 response = await client.post(
-                    "/auth/register", json={"email": user.email, "password": "password123"}
+                    "/auth/register",
+                    json={"username": "learner", "email": user.email, "password": "password123"},
                 )
         self.assertEqual(response.status_code, 201)
         self.assertEqual(set(response.json()), {"access_token", "token_type"})
@@ -100,7 +107,10 @@ class AuthValidationTests(unittest.IsolatedAsyncioTestCase):
 class AuthUserServiceTests(unittest.IsolatedAsyncioTestCase):
     def setUp(self):
         self.user = User.model_construct(
-            email="learner@example.com", hashed_password="stored-hash", is_active=True
+            username="learner",
+            email="learner@example.com",
+            hashed_password="stored-hash",
+            is_active=True,
         )
         self.model = MagicMock(return_value=self.user)
         self.model.find_one = AsyncMock(return_value=None)
@@ -117,33 +127,45 @@ class AuthUserServiceTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_register_normalizes_identity_and_preserves_the_password(self):
         result = await auth_service.register_user(
-            " Learner@Example.COM ", " pass123 ", "  Nguyễn Phong  "
+            " Learner ", " pass123 ", "  Nguyễn Phong  ", email=" Learner@Example.COM "
         )
         self.assertIs(result, self.user)
-        self.model.find_one.assert_awaited_once_with({"email": "learner@example.com"})
+        self.assertEqual(
+            self.model.find_one.await_args_list,
+            [
+                unittest.mock.call({"username": "learner"}),
+                unittest.mock.call({"email": "learner@example.com"}),
+            ],
+        )
         self.model.assert_called_once_with(
-            email="learner@example.com", hashed_password="stored-hash", display_name="Nguyễn Phong"
+            username="learner",
+            email="learner@example.com",
+            hashed_password="stored-hash",
+            display_name="Nguyễn Phong",
         )
         self.hash_password.assert_called_once_with(" pass123 ")
         self.insert.assert_awaited_once()
 
     async def test_existing_email_is_rejected_before_hashing_or_inserting(self):
-        self.model.find_one.return_value = self.user
+        self.model.find_one.side_effect = [None, self.user]
         with self.assertRaises(auth_service.EmailAlreadyRegisteredError):
-            await auth_service.register_user(self.user.email, "password123")
+            await auth_service.register_user("learner", "password123", email=self.user.email)
         self.hash_password.assert_not_called()
         self.insert.assert_not_awaited()
 
-    async def test_concurrent_duplicate_email_becomes_a_domain_error(self):
-        self.insert.side_effect = [self.user, DuplicateKeyError("duplicate email")]
+    async def test_concurrent_duplicate_username_becomes_a_domain_error(self):
+        self.insert.side_effect = [self.user, DuplicateKeyError("duplicate username")]
         results = await asyncio.gather(
-            auth_service.register_user(self.user.email, "password123"),
-            auth_service.register_user(self.user.email, "password123"),
+            auth_service.register_user("learner", "password123"),
+            auth_service.register_user("learner", "password123"),
             return_exceptions=True,
         )
         self.assertEqual(sum(isinstance(result, User) for result in results), 1)
         self.assertEqual(
-            sum(isinstance(result, auth_service.EmailAlreadyRegisteredError) for result in results),
+            sum(
+                isinstance(result, auth_service.UsernameAlreadyRegisteredError)
+                for result in results
+            ),
             1,
         )
         self.assertEqual(self.insert.await_count, 2)
@@ -151,7 +173,7 @@ class AuthUserServiceTests(unittest.IsolatedAsyncioTestCase):
     async def test_database_outage_is_not_misreported_as_duplicate_email(self):
         self.insert.side_effect = AutoReconnect("offline")
         with self.assertRaises(AutoReconnect):
-            await auth_service.register_user(self.user.email, "password123")
+            await auth_service.register_user("learner", "password123")
 
     async def test_unknown_user_does_not_attempt_password_verification(self):
         with patch.object(auth_service, "verify_password") as verify:

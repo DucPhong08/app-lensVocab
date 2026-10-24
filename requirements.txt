@@ -13,3 +13,4 @@ boto3>=1.36.0
 bcrypt>=4.0.0
 ruff>=0.6.0
 pre-commit>=4.0.0
+google-auth[requests]==2.58.0

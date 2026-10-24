@@ -71,33 +71,45 @@ class UserInactiveError(Exception):
     pass
 
 
-async def register_user(email: str, password: str, display_name: str | None = None) -> User:
-    """Đăng ký tài khoản, dựa vào unique index để chặn email trùng khi có cạnh tranh."""
-    normalized_email = email.strip().lower()
-    existing_user = await User.find_one({"email": normalized_email})
-    if existing_user is not None:
-        raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED")
+class UsernameAlreadyRegisteredError(Exception):
+    pass
 
+
+async def register_user(
+    username: str, password: str, display_name: str | None = None, *, email: str | None = None
+) -> User:
+    username = username.strip().lower()
+    email = (email.strip().lower() or None) if email else None
+    if await User.find_one({"username": username}) is not None:
+        raise UsernameAlreadyRegisteredError("USERNAME_ALREADY_REGISTERED")
+    if email and await User.find_one({"email": email}) is not None:
+        raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED")
     user = User(
-        email=normalized_email,
+        username=username,
+        email=email,
         hashed_password=await asyncio.to_thread(hash_password, password),
         display_name=(display_name.strip() or None) if display_name is not None else None,
     )
     try:
         await user.insert()
     except DuplicateKeyError as exc:
-        raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED") from exc
+        # Preserve the actual conflicting identity when concurrent requests race.
+        if email and await User.find_one({"email": email}) is not None:
+            raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED") from exc
+        raise UsernameAlreadyRegisteredError("USERNAME_ALREADY_REGISTERED") from exc
     return user
 
 
-async def authenticate_user(email: str, password: str) -> User:
-    """Xác thực người dùng bằng email và mật khẩu."""
-    normalized_email = email.strip().lower()
-    user = await User.find_one({"email": normalized_email})
-    if user is None or not await asyncio.to_thread(verify_password, password, user.hashed_password):
+async def authenticate_user(username: str, password: str) -> User:
+    identity = username.strip().lower()
+    field = "email" if "@" in identity else "username"
+    user = await User.find_one({field: identity})
+    if (
+        user is None
+        or not user.hashed_password
+        or not await asyncio.to_thread(verify_password, password, user.hashed_password)
+    ):
         raise InvalidCredentialsError("INVALID_CREDENTIALS")
-
     if not user.is_active:
         raise UserInactiveError("USER_INACTIVE")
-
     return user

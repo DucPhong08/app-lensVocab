@@ -14,24 +14,25 @@ class Settings(BaseSettings):
     )
 
     # ── Database ─────────────────────────────────────────────────────────────
-    MONGODB_URL: str = "mongodb://root:root@localhost:27017/?authSource=admin"
+    MONGODB_URL: str = Field("mongodb://root:root@localhost:27017/?authSource=admin", repr=False)
     MONGODB_DB_NAME: str = "lensvocab"
 
     # ── Cache ────────────────────────────────────────────────────────────────
-    REDIS_URL: str = "redis://localhost:6379/0"
+    REDIS_URL: str = Field("redis://localhost:6379/0", repr=False)
     REDIS_CACHE_TTL: int = 86400 * 7  # 7 ngày
     REDIS_QUOTA_TTL: int = 86400  # 24 giờ
 
     # ── Security ─────────────────────────────────────────────────────────────
     # Bắt buộc, không có default — thiếu env var này sẽ fail ngay lúc khởi
     # động thay vì chạy ngầm với key insecure đã biết trước trong source.
-    SECRET_KEY: str
+    SECRET_KEY: str = Field(repr=False)
+    GOOGLE_WEB_CLIENT_ID: str = ""
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24
 
     # ── AWS Infrastructure (IAM API Keys: Rekognition, Bedrock, Polly) ───────
-    AWS_ACCESS_KEY_ID: str = ""
-    AWS_SECRET_ACCESS_KEY: str = ""
+    AWS_ACCESS_KEY_ID: str = Field("", repr=False)
+    AWS_SECRET_ACCESS_KEY: str = Field("", repr=False)
     AWS_REGION: str = "ap-southeast-1"  # Region chính: Rekognition, Polly
     # Region Bedrock cho Nova Lite; giữ tên env legacy để không đổi deployment
     AWS_EMBEDDING_REGION: str = ""  # Nếu để trống → fallback về AWS_REGION

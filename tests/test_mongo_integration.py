@@ -159,3 +159,36 @@ class MongoIntegrationTests(unittest.IsolatedAsyncioTestCase):
         ):
             queue = await fetch_today_queue(self.user)
         self.assertEqual([card.keyword for card in queue], ["word4", "word3"])
+
+    async def test_username_accounts_without_email_survive_legacy_index_migration(self):
+        from app.bootstrap import ensure_user_indexes
+        from app.services.auth_service import UsernameAlreadyRegisteredError, register_user
+
+        collection = self.client[self.database]["users"]
+        await collection.drop_index("email_unique_present")
+        await collection.create_index("email", unique=True, name="email_1")
+        await ensure_user_indexes(self.client[self.database])
+        first = await register_user("learner_one", "secret123")
+        second = await register_user("learner_two", "secret123")
+        self.assertIsNone(first.email)
+        self.assertIsNone(second.email)
+        self.assertNotEqual(first.id, second.id)
+        with self.assertRaises(UsernameAlreadyRegisteredError):
+            await register_user("LEARNER_ONE", "secret123")
+        self.assertEqual((await User.get(self.user.id)).email, "test@example.com")
+
+    async def test_google_link_is_persisted_and_cannot_be_taken_by_another_user(self):
+        from app.services import google_auth_service as google
+
+        second = await User(username="second_learner").insert()
+        with patch.object(
+            google,
+            "verify_google_token",
+            AsyncMock(return_value=google.GoogleIdentity("test-sub", None, None)),
+        ):
+            await google.link_google(self.user, "test-token")
+            await google.link_google(self.user, "test-token")
+            with self.assertRaisesRegex(google.GoogleAuthError, "GOOGLE_ACCOUNT_ALREADY_LINKED"):
+                await google.link_google(second, "test-token")
+        self.assertEqual((await User.get(self.user.id)).google_sub, "test-sub")
+        self.assertIsNone((await User.get(second.id)).google_sub)

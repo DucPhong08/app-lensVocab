@@ -35,3 +35,5 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 * Checklist bắt buộc kiểm tra trước khi hoàn thành task và commit code.
 
 - [06. MVP scan, phân trang, audio và cấu hình proxy](06_MVP_SCAN_AND_DELIVERY.md) — hành vi hiện tại và triển khai đồng bộ backend/UI.
+
+- [07. Username, email tùy chọn và đăng nhập Google](07_USERNAME_AND_GOOGLE_AUTH.md) — API, index migration và cấu hình OAuth mobile/backend.
