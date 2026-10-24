@@ -11,7 +11,30 @@
 - S3 để private. Server lưu object key và cấp URL GET có chữ ký hết hạn (mặc định 1 giờ), không lưu URL có hạn vào MongoDB. App có thể xin URL mới khi ảnh tải lỗi.
 - Nếu kho ảnh chưa cấu hình hoặc upload thất bại, thẻ từ vẫn được lưu. App báo riêng việc ảnh chưa lưu, và người dùng có thể mở chi tiết thẻ để thêm lại.
 
-## Chuẩn bị S3 khi bạn chưa có bucket
+## Backblaze B2 (bucket đã tạo)
+
+Backend hỗ trợ B2 qua S3-compatible API; endpoint B2 dùng khóa riêng, không thay các AWS IAM key của Rekognition/Bedrock/Polly. Endpoint chỉ chấp nhận HTTPS theo dạng `https://s3.<region>.backblazeb2.com`.
+
+```dotenv
+S3_IMAGE_BUCKET=lenvocab-images-phong-20261024
+S3_IMAGE_ENDPOINT_URL=https://s3.us-east-005.backblazeb2.com
+S3_IMAGE_ACCESS_KEY_ID=YOUR_B2_KEY_ID
+S3_IMAGE_SECRET_ACCESS_KEY=YOUR_B2_APPLICATION_KEY
+S3_IMAGE_URL_TTL_SECONDS=3600
+```
+
+- Trong B2 → Application Keys, tạo khóa Read and Write chỉ cho bucket này, có thể giới hạn prefix `user-images/`. Không dùng master key, không cần liệt kê mọi bucket.
+- Hai khóa phải có đủ khi dùng endpoint B2; thiếu khóa trả `IMAGE_STORAGE_NOT_CONFIGURED`, không dùng nhầm AWS credentials hoặc metadata credentials.
+- Region được lấy từ endpoint (`us-east-005`); `S3_IMAGE_REGION` chỉ dùng cho AWS khi endpoint trống. Khởi động lại backend sau khi đổi cấu hình.
+- Client B2 dùng path-style URLs, SigV4 và chỉ tính checksum khi bắt buộc để tránh checksum trailer tùy chọn không tương thích. SSE `AES256` bật mã hóa SSE-B2 trên B2.
+- B2 giữ phiên bản. Khi đổi/xóa/dọn ảnh thất bại, backend liệt kê phiên bản bằng prefix đầy đủ của object, lọc đúng key, rồi xóa từng VersionId và delete marker. Không chỉ gửi DELETE không VersionId vì thao tác đó chỉ thêm hide marker. Không xóa object khác dù có cùng prefix.
+- Endpoint trống giữ cách dùng AWS S3 cũ; chuyển provider không tự di chuyển ảnh đã có. Bucket hiện mới và trống theo ảnh người dùng cung cấp.
+- Không commit `.env`, không đưa B2 key vào app mobile. Không đặt `AWS_ENDPOINT_URL` toàn cục thành B2 endpoint.
+- Chưa upload/đọc/xóa trên B2 thật; cần người vận hành nhập khóa và thử app sau khi khởi động lại backend.
+
+Nguồn: [Boto3 với B2](https://www.backblaze.com/docs/cloud-storage-use-the-aws-sdk-for-python-with-backblaze-b2), [DELETE và VersionId](https://www.backblaze.com/apidocs/s3-delete-object), [PUT encryption](https://www.backblaze.com/apidocs/s3-put-object).
+
+## Cấu hình AWS S3 thay thế
 
 1. Trong AWS Console → S3 → Create bucket, tạo một bucket riêng cho ảnh LenVocab. Ghi lại bucket name và region.
 2. Giữ **Block all public access** bật. Giữ Object Ownership **Bucket owner enforced** (ACLs disabled). Không cấp public-read cho bucket hoặc object.
@@ -73,6 +96,6 @@ Lỗi: 401 chưa đăng nhập; 404 `FLASHCARD_NOT_FOUND` nếu không sở hữ
 5. Ảnh xoay EXIF, PNG trong suốt, ảnh sai dữ liệu, ảnh quá lớn, mất mạng, S3 thiếu quyền và URL hết hạn.
 6. Khi không có `S3_IMAGE_BUCKET`, lưu từ vẫn thành công và app báo ảnh chưa lưu.
 
-Chưa có bucket thật ở thời điểm triển khai mã này. Các kiểm thử dùng ảnh tạo trong test, S3 client giả/SDK Stubber và MongoDB tạm; không tải ảnh hoặc tạo tài nguyên trên AWS thật.
+Người dùng đã tạo bucket B2, chưa cấu hình khóa cho backend. Kiểm thử tự động dùng ảnh tạo trong test, client giả/SDK Stubber và MongoDB tạm ở đợt triển khai trước; không tải ảnh hoặc tạo tài nguyên trên AWS/B2 thật.
 
 Nguồn: [Rekognition orientation](https://docs.aws.amazon.com/rekognition/latest/APIReference/API_DetectLabels.html), [S3 presigned URLs](https://docs.aws.amazon.com/AmazonS3/latest/userguide/using-presigned-url.html), [Boto3 presigned URLs](https://docs.aws.amazon.com/boto3/latest/guide/s3-presigned-urls.html), [Pillow image limits](https://pillow.readthedocs.io/en/stable/reference/Image.html), [EXIF transpose](https://pillow.readthedocs.io/en/stable/reference/ImageOps.html).

@@ -35,19 +35,38 @@ def _s3_client():
     global _client
     if not settings.S3_IMAGE_BUCKET:
         raise CardImageError("IMAGE_STORAGE_NOT_CONFIGURED", 503)
+    endpoint = settings.S3_IMAGE_ENDPOINT_URL
+    if endpoint and not (settings.S3_IMAGE_ACCESS_KEY_ID and settings.S3_IMAGE_SECRET_ACCESS_KEY):
+        raise CardImageError("IMAGE_STORAGE_NOT_CONFIGURED", 503)
     with _client_lock:
         if _client is None:
             _client = boto3.client(
                 "s3",
-                aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
-                aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
-                region_name=settings.S3_IMAGE_REGION or settings.AWS_REGION,
+                endpoint_url=endpoint or None,
+                aws_access_key_id=(
+                    settings.S3_IMAGE_ACCESS_KEY_ID if endpoint else settings.AWS_ACCESS_KEY_ID
+                )
+                or None,
+                aws_secret_access_key=(
+                    settings.S3_IMAGE_SECRET_ACCESS_KEY
+                    if endpoint
+                    else settings.AWS_SECRET_ACCESS_KEY
+                )
+                or None,
+                region_name=(
+                    endpoint.split(".")[1]
+                    if endpoint
+                    else settings.S3_IMAGE_REGION or settings.AWS_REGION
+                ),
                 config=Config(
                     signature_version="s3v4",
                     connect_timeout=3,
                     read_timeout=10,
                     retries={"max_attempts": 2},
-                    s3={"addressing_style": "virtual"},
+                    s3={"addressing_style": "path" if endpoint else "virtual"},
+                    # Avoid optional AWS checksum trailers unsupported by B2.
+                    request_checksum_calculation="when_required" if endpoint else "when_supported",
+                    response_checksum_validation="when_required" if endpoint else "when_supported",
                 ),
             )
     return _client
@@ -172,7 +191,25 @@ def _delete_object(card: UserFlashcard) -> None:
     if not owned_image_key(card):
         return
     try:
-        _s3_client().delete_object(Bucket=settings.S3_IMAGE_BUCKET, Key=card.image_key)
+        client = _s3_client()
+        if not settings.S3_IMAGE_ENDPOINT_URL:
+            client.delete_object(Bucket=settings.S3_IMAGE_BUCKET, Key=card.image_key)
+            return
+        # B2 retains versions: DELETE without VersionId only adds a hide marker.
+        pages = client.get_paginator("list_object_versions").paginate(
+            Bucket=settings.S3_IMAGE_BUCKET, Prefix=card.image_key
+        )
+        versions = [
+            item
+            for page in pages
+            for field in ("Versions", "DeleteMarkers")
+            for item in page.get(field, [])
+            if item["Key"] == card.image_key
+        ]
+        for item in versions:
+            client.delete_object(
+                Bucket=settings.S3_IMAGE_BUCKET, Key=card.image_key, VersionId=item["VersionId"]
+            )
     except (BotoCoreError, ClientError) as exc:
         raise CardImageError("IMAGE_STORAGE_UNAVAILABLE", 503) from exc
 

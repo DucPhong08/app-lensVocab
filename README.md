@@ -68,4 +68,4 @@ Kiểm thử MongoDB thật là opt-in, chỉ dùng replica set local có thể 
 
 ## Ảnh cá nhân trên thẻ
 
-Thẻ đã lưu hỗ trợ ảnh riêng theo user qua `PUT/GET/DELETE /flashcards/{id}/image`. Ảnh được xử lý, bỏ metadata và lưu vào S3 private; để trống bucket thì upload tắt. Xem [cấu hình và hành vi ảnh](docs/08_PERSONAL_CARD_IMAGES.md).
+Thẻ đã lưu hỗ trợ ảnh riêng theo user qua `PUT/GET/DELETE /flashcards/{id}/image`. Ảnh được xử lý, bỏ metadata và lưu vào Backblaze B2 hoặc AWS S3 private; B2 dùng endpoint và khóa riêng, để trống bucket thì upload tắt. Xem [cấu hình và hành vi ảnh](docs/08_PERSONAL_CARD_IMAGES.md).

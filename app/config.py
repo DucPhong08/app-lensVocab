@@ -54,6 +54,10 @@ class Settings(BaseSettings):
     # Private object storage; an empty bucket disables image uploads.
     S3_IMAGE_BUCKET: str = ""
     S3_IMAGE_REGION: str = ""
+    # Optional Backblaze endpoint; empty keeps AWS S3 and its existing credentials.
+    S3_IMAGE_ENDPOINT_URL: str = Field("", pattern=r"^(https://s3\.[a-z0-9-]+\.backblazeb2\.com)?$")
+    S3_IMAGE_ACCESS_KEY_ID: str = Field("", repr=False)
+    S3_IMAGE_SECRET_ACCESS_KEY: str = Field("", repr=False)
     S3_IMAGE_URL_TTL_SECONDS: int = Field(3600, ge=60, le=86400)
 
     # ── Business Rules ───────────────────────────────────────────────────────

@@ -38,4 +38,4 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 
 - [07. Username, email tùy chọn và đăng nhập Google](07_USERNAME_AND_GOOGLE_AUTH.md) — API, index migration và cấu hình OAuth mobile/backend.
 
-- [08. Ảnh riêng của thẻ từ](08_PERSONAL_CARD_IMAGES.md) — S3 private, cắt ảnh, phân quyền, API và cấu hình bucket.
+- [08. Ảnh riêng của thẻ từ](08_PERSONAL_CARD_IMAGES.md) — Backblaze B2/AWS S3 private, cắt ảnh, phân quyền, API và cấu hình bucket.
