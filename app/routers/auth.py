@@ -55,12 +55,4 @@ async def login(body: LoginRequest) -> TokenResponse:
 @router.get("/auth/me", response_model=UserMeResponse)
 async def get_me(current_user: User = Depends(get_current_user)) -> UserMeResponse:
     """Lấy thông tin người dùng hiện tại và hạn mức quét còn lại."""
-    return UserMeResponse(
-        id=current_user.id,
-        email=current_user.email,
-        display_name=current_user.display_name,
-        account_tier=current_user.account_tier,
-        daily_quota_left=current_user.daily_quota_left,
-        is_active=current_user.is_active,
-        preferences=current_user.preferences,
-    )
+    return UserMeResponse.model_validate(current_user, from_attributes=True)

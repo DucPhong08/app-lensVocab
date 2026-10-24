@@ -6,8 +6,10 @@ from datetime import UTC, datetime, timedelta
 
 import bcrypt
 from jose import JWTError, jwt
+from pymongo.errors import DuplicateKeyError
 
 from app.config import settings
+from app.models.user import User
 
 
 def hash_password(password: str) -> str:
@@ -24,17 +26,19 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     hashed_bytes = hashed_password.encode("utf-8")
     try:
         return bcrypt.checkpw(plain_bytes, hashed_bytes)
-    except Exception:
+    except ValueError:
         return False
 
 
 def create_access_token(user_id: uuid.UUID, expires_delta: timedelta | None = None) -> str:
     """Tạo JWT access token chứa subject là user_id (string UUID)."""
     now = datetime.now(UTC)
-    if expires_delta:
-        expire = now + expires_delta
-    else:
-        expire = now + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    lifetime = (
+        expires_delta
+        if expires_delta is not None
+        else timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    )
+    expire = now + lifetime
 
     to_encode = {
         "sub": str(user_id),
@@ -67,30 +71,29 @@ class UserInactiveError(Exception):
     pass
 
 
-async def register_user(email: str, password: str, display_name: str | None = None):
-    """Đăng ký tài khoản người dùng mới vào database."""
-    from app.models.user import User
-
+async def register_user(email: str, password: str, display_name: str | None = None) -> User:
+    """Đăng ký tài khoản, dựa vào unique index để chặn email trùng khi có cạnh tranh."""
     normalized_email = email.strip().lower()
-    existing_user = await User.find_one(User.email == normalized_email)
+    existing_user = await User.find_one({"email": normalized_email})
     if existing_user is not None:
         raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED")
 
     user = User(
         email=normalized_email,
         hashed_password=await asyncio.to_thread(hash_password, password),
-        display_name=display_name,
+        display_name=(display_name.strip() or None) if display_name is not None else None,
     )
-    await user.insert()
+    try:
+        await user.insert()
+    except DuplicateKeyError as exc:
+        raise EmailAlreadyRegisteredError("EMAIL_ALREADY_REGISTERED") from exc
     return user
 
 
-async def authenticate_user(email: str, password: str):
+async def authenticate_user(email: str, password: str) -> User:
     """Xác thực người dùng bằng email và mật khẩu."""
-    from app.models.user import User
-
     normalized_email = email.strip().lower()
-    user = await User.find_one(User.email == normalized_email)
+    user = await User.find_one({"email": normalized_email})
     if user is None or not await asyncio.to_thread(verify_password, password, user.hashed_password):
         raise InvalidCredentialsError("INVALID_CREDENTIALS")
 
