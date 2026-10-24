@@ -9,7 +9,7 @@ from redis.exceptions import RedisError
 from app.dependencies.auth import get_current_user
 from app.models.user import User
 from app.redis_client import get_redis
-from app.schemas.vision import ScanResponse
+from app.schemas.vision import ScanResponse, SelectObjectRequest
 from app.services.ai_service import BedrockOutputError
 from app.services.guest_quota_service import GuestScanLimitError, consume_guest_quota
 from app.services.quota_service import (
@@ -18,6 +18,7 @@ from app.services.quota_service import (
     check_and_consume_quota,
 )
 from app.services.system_setting_service import fetch_system_settings
+from app.services.vision_selection_service import ObjectSelectionError, select_object
 from app.services.vision_service import _format_sse, execute_vision_scan, execute_vision_stream
 
 logger = logging.getLogger(__name__)
@@ -136,3 +137,22 @@ async def scan_image_stream(
             "X-Accel-Buffering": "no",
         },
     )
+
+
+async def object_response(body: SelectObjectRequest, user: User | None) -> ScanResponse:
+    try:
+        return await select_object(body.selection_token, user, get_redis())
+    except ObjectSelectionError as exc:
+        raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
+    except _SCAN_ERRORS as exc:
+        raise scan_http_error(exc) from exc
+
+
+@router.post("/objects/select", response_model=ScanResponse)
+async def select_scan_object(body: SelectObjectRequest, user: User = Depends(get_current_user)):
+    return await object_response(body, user)
+
+
+@router.post("/objects/select/guest", response_model=ScanResponse)
+async def select_guest_object(body: SelectObjectRequest):
+    return await object_response(body, None)

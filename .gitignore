@@ -23,3 +23,6 @@ mongodata/
 # OS Specific
 .DS_Store
 Thumbs.db
+
+# Downloaded, checksum-verified segmentation model
+models/*.onnx

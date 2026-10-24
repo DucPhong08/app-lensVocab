@@ -9,11 +9,12 @@ from botocore.exceptions import BotoCoreError, ClientError
 
 from app.models.setting import SystemSetting
 from app.models.user import User
-from app.schemas.vision import BoundingBoxSchema, DetectedObjectItem, ScanResponse
+from app.schemas.vision import BoundingBoxSchema, ScanResponse
 from app.services.ai_service import detect_image_labels
 from app.services.cache_service import FlashcardPayload, get_flashcard, stream_flashcard
 from app.services.degradation_service import DegradationResult, evaluate_vision_result
 from app.services.system_setting_service import fetch_system_settings
+from app.services.vision_selection_service import detected_objects as scan_objects
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -64,25 +65,7 @@ async def execute_vision_scan(
 
     vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)
 
-    # Danh sách tất cả vật thể Rekognition phát hiện được
-    detected_objects = [
-        DetectedObjectItem(
-            keyword=lbl.name,
-            confidence=round(lbl.confidence, 2),
-            bounding_box=BoundingBoxSchema(
-                width=lbl.bounding_box.width,
-                height=lbl.bounding_box.height,
-                left=lbl.bounding_box.left,
-                top=lbl.bounding_box.top,
-            )
-            if lbl.bounding_box
-            else None,
-            categories=lbl.categories,
-            aliases=lbl.aliases,
-            parents=lbl.parents,
-        )
-        for lbl in vision_result.labels[:effective_max]
-    ]
+    detected_objects = scan_objects(vision_result, effective_max, current_user)
 
     analysis = await evaluate_vision_result(
         keyword=vision_result.top_label,
@@ -118,6 +101,17 @@ async def execute_vision_scan(
 
     return ScanResponse(
         status=analysis.status.value,
+        selected_object_id=next(
+            (
+                item.object_id
+                for item in detected_objects
+                if item.keyword.casefold() == (vision_result.top_label or "").casefold()
+                and item.bounding_box is not None
+            ),
+            None,
+        )
+        if box_schema
+        else None,
         keyword=payload.keyword,
         pronunciation=payload.pronunciation,
         meaning_vi=payload.meaning_vi,
@@ -190,22 +184,7 @@ async def execute_vision_stream(
         }
 
     detected_objects = [
-        {
-            "keyword": lbl.name,
-            "confidence": round(lbl.confidence, 2),
-            "bounding_box": {
-                "width": lbl.bounding_box.width,
-                "height": lbl.bounding_box.height,
-                "left": lbl.bounding_box.left,
-                "top": lbl.bounding_box.top,
-            }
-            if lbl.bounding_box
-            else None,
-            "categories": lbl.categories,
-            "aliases": lbl.aliases,
-            "parents": lbl.parents,
-        }
-        for lbl in vision_result.labels[:effective_max]
+        item.model_dump() for item in scan_objects(vision_result, effective_max, current_user)
     ]
 
     # Bắn ngay event nhận diện nhãn + Bounding Box để Frontend vẽ khung trước mắt người dùng

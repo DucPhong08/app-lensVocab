@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class BoundingBoxSchema(BaseModel):
@@ -11,6 +11,8 @@ class BoundingBoxSchema(BaseModel):
 
 
 class DetectedObjectItem(BaseModel):
+    object_id: str | None = None
+    selection_token: str | None = Field(None, repr=False)
     keyword: str  # Tên nhãn tiếng Anh (ví dụ "chair", "laptop")
     confidence: float  # Độ tin cậy (0 - 100)
     bounding_box: BoundingBoxSchema | None = None  # Khung bao quanh vật thể (Google Lens style)
@@ -20,6 +22,7 @@ class DetectedObjectItem(BaseModel):
 
 
 class ScanResponse(BaseModel):
+    selected_object_id: str | None = None
     status: str  # "OK" | "FALLBACK" | "AI_COULD_NOT_RECOGNIZE"
     keyword: str | None = None  # Từ tiếng Anh: "chair"
     pronunciation: str | None = None  # Phiên âm IPA: "/tʃer/"
@@ -39,3 +42,7 @@ class ScanResponse(BaseModel):
     source: str | None = None  # "redis" | "mongodb" | "bedrock"
     is_draft: bool = False
     message: str | None = None
+
+
+class SelectObjectRequest(BaseModel):
+    selection_token: str = Field(min_length=1, max_length=4096, repr=False)

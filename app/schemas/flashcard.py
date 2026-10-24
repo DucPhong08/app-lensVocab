@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
@@ -26,6 +26,7 @@ class FlashcardItemResponse(BaseModel):
     related_words: list[str]
     audio_base64: str | None
     image_url: str | None = None
+    image_style: Literal["photo", "sticker"] = "photo"
     has_image: bool = False
     status: FlashcardStatus
     interval: int
@@ -72,4 +73,5 @@ class CropBox(BaseModel):
 
 class CardImageResponse(BaseModel):
     image_url: str | None = None
+    image_style: Literal["photo", "sticker"] = "photo"
     has_image: bool = False

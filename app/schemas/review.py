@@ -15,6 +15,7 @@ class ReviewCardResponse(BaseModel):
     related_words: list[str]
     audio_base64: str | None
     image_url: str | None = None
+    image_style: str = "photo"
     has_image: bool = False
     interval: int
     repetitions: int

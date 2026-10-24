@@ -1,5 +1,7 @@
 # Lưu ảnh cá nhân trên flashcard
 
+> Mobile hiện gửi `style=sticker` để lưu PNG tách nền có viền trắng. Xem [luồng chọn vật và sticker](09_STICKER_OBJECTS.md). Phần JPEG dưới đây mô tả đường tương thích `style=photo`.
+
 ## Hành vi đã triển khai
 
 - Quét ảnh vẫn nhận diện như trước. Ảnh chưa được đưa lên kho lưu trữ khi chỉ quét hoặc dùng thử.

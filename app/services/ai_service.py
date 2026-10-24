@@ -4,7 +4,7 @@ import asyncio
 import base64
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from threading import Lock
 from typing import Annotated
@@ -113,6 +113,7 @@ class RekognitionLabel:
     parents: list[str]
     bounding_box: BoundingBox | None = None
     has_instance: bool = False
+    instances: list[BoundingBox] = field(default_factory=list)
 
 
 @dataclass
@@ -125,6 +126,7 @@ class VisionResult:
     top_aliases: list[str]
     top_parents: list[str]
     raw_description: str
+    candidates: list[RekognitionLabel] = field(default_factory=list)
 
 
 _CONTEXT_LABELS = frozenset(
@@ -178,16 +180,28 @@ def _sync_detect_labels(
     parsed_labels: list[RekognitionLabel] = []
     for lbl in raw_labels:
         instances = lbl.get("Instances", [])
-        has_instance = len(instances) > 0
-        box: BoundingBox | None = None
-        if has_instance:
-            raw_box = instances[0].get("BoundingBox", {})
-            box = BoundingBox(
+        boxes = []
+        for instance in instances:
+            raw_box = instance.get("BoundingBox", {})
+            if instance.get("Confidence", lbl["Confidence"]) < settings.REKOGNITION_MIN_CONFIDENCE:
+                continue
+            candidate = BoundingBox(
                 width=round(raw_box.get("Width", 0.0), 4),
                 height=round(raw_box.get("Height", 0.0), 4),
                 left=round(raw_box.get("Left", 0.0), 4),
                 top=round(raw_box.get("Top", 0.0), 4),
             )
+            if (
+                0 < candidate.width <= 1
+                and 0 < candidate.height <= 1
+                and 0 <= candidate.left < 1
+                and 0 <= candidate.top < 1
+                and candidate.left + candidate.width <= 1.0001
+                and candidate.top + candidate.height <= 1.0001
+            ):
+                boxes.append(candidate)
+        has_instance = bool(boxes)
+        box = boxes[0] if boxes else None
 
         parsed_labels.append(
             RekognitionLabel(
@@ -198,6 +212,7 @@ def _sync_detect_labels(
                 parents=[p["Name"] for p in lbl.get("Parents", [])],
                 bounding_box=box,
                 has_instance=has_instance,
+                instances=boxes,
             )
         )
 
@@ -211,6 +226,7 @@ def _sync_detect_labels(
         reverse=True,
     )
     raw_desc = ", ".join(label.name for label in parsed_labels)
+    candidates = parsed_labels
     parsed_labels = parsed_labels[:safe_max]
     top = parsed_labels[0]
     context_only = top.name.casefold() in _CONTEXT_LABELS
@@ -233,6 +249,7 @@ def _sync_detect_labels(
         top_aliases=top.aliases,
         top_parents=top.parents,
         raw_description=raw_desc,
+        candidates=candidates,
     )
 
 

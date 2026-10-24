@@ -76,6 +76,7 @@ async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
                 audio_base64=None,
                 image_url=image_urls.get(uc.id),
                 has_image=bool(uc.image_key),
+                image_style="sticker" if (uc.image_key or "").endswith(".png") else "photo",
                 interval=uc.interval,
                 repetitions=uc.repetitions,
                 efactor=uc.efactor,

@@ -51,6 +51,8 @@ class Settings(BaseSettings):
     POLLY_OUTPUT_FORMAT: str = "mp3"
     POLLY_ENGINE: Literal["standard", "neural"] = "standard"
 
+    IMAGE_SEGMENTATION_MODEL_PATH: str = "models/u2netp.onnx"
+
     # Private object storage; an empty bucket disables image uploads.
     S3_IMAGE_BUCKET: str = ""
     S3_IMAGE_REGION: str = ""

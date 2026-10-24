@@ -7,7 +7,7 @@ import math
 import re
 import uuid
 import warnings
-from threading import Lock
+from threading import BoundedSemaphore, Lock
 
 import boto3
 from botocore.config import Config
@@ -17,12 +17,14 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from app.config import settings
 from app.models.flashcard import UserFlashcard
 from app.schemas.flashcard import CardImageResponse, CropBox
+from app.services.sticker_service import StickerError, sticker
 
 logger = logging.getLogger(__name__)
 MAX_IMAGE_BYTES = 5 * 1024 * 1024
 MAX_IMAGE_PIXELS = 20_000_000
 _client = None
 _client_lock = Lock()
+_sticker_gate = BoundedSemaphore(1)
 
 
 class CardImageError(Exception):
@@ -83,11 +85,24 @@ def close_storage_client() -> None:
 def owned_image_key(card: UserFlashcard) -> bool:
     prefix = f"user-images/{card.user_id.hex}/{card.id.hex}/"
     return bool(
-        card.image_key and re.fullmatch(re.escape(prefix) + r"[0-9a-f]{32}\.jpg", card.image_key)
+        card.image_key
+        and re.fullmatch(re.escape(prefix) + r"[0-9a-f]{32}\.(jpg|png)", card.image_key)
     )
 
 
-def prepare_image(data: bytes, crop: CropBox | None = None) -> bytes:
+def prepare_image(data: bytes, crop: CropBox | None = None, *, style: str = "photo") -> bytes:
+    if style != "sticker":
+        return _prepare_image(data, crop, style=style)
+    # Bound the entire decode/inference/encode job, including cancelled requests.
+    if not _sticker_gate.acquire(blocking=False):
+        raise CardImageError("STICKER_BUSY", 429)
+    try:
+        return _prepare_image(data, crop, style=style)
+    finally:
+        _sticker_gate.release()
+
+
+def _prepare_image(data: bytes, crop: CropBox | None = None, *, style: str = "photo") -> bytes:
     if not data:
         raise CardImageError("FILE_EMPTY")
     if len(data) > MAX_IMAGE_BYTES:
@@ -111,6 +126,14 @@ def prepare_image(data: bytes, crop: CropBox | None = None) -> bytes:
                     image = image.crop((left, top, right, bottom))
                 if source.format == "PNG":
                     image = ImageOps.exif_transpose(image)
+                if style == "sticker":
+                    try:
+                        result = sticker(image)
+                    except StickerError as exc:
+                        raise CardImageError(str(exc), 503 if "MODEL" in str(exc) else 422) from exc
+                    output = io.BytesIO()
+                    result.save(output, format="PNG", optimize=True)
+                    return output.getvalue()
                 image.thumbnail((1600, 1600), Image.Resampling.LANCZOS)
                 # A new pixel canvas carries no EXIF/GPS, XMP, comments or ICC data.
                 clean = Image.new("RGB", image.size, "white")
@@ -170,7 +193,11 @@ async def _owned_card(user_id: uuid.UUID, card_id: uuid.UUID) -> UserFlashcard:
 
 async def get_card_image(user_id: uuid.UUID, card_id: uuid.UUID) -> CardImageResponse:
     card = await _owned_card(user_id, card_id)
-    return CardImageResponse(image_url=await asyncio.to_thread(_signed_url, card), has_image=True)
+    return CardImageResponse(
+        image_url=await asyncio.to_thread(_signed_url, card),
+        has_image=True,
+        image_style="sticker" if card.image_key.endswith(".png") else "photo",
+    )
 
 
 def _put_object(key: str, data: bytes) -> None:
@@ -179,7 +206,7 @@ def _put_object(key: str, data: bytes) -> None:
             Bucket=settings.S3_IMAGE_BUCKET,
             Key=key,
             Body=data,
-            ContentType="image/jpeg",
+            ContentType="image/png" if key.endswith(".png") else "image/jpeg",
             CacheControl="private, max-age=300",
             ServerSideEncryption="AES256",
         )
@@ -222,13 +249,19 @@ async def _cleanup(card: UserFlashcard) -> None:
 
 
 async def set_card_image(
-    user_id: uuid.UUID, card_id: uuid.UUID, data: bytes, crop: CropBox | None = None
+    user_id: uuid.UUID,
+    card_id: uuid.UUID,
+    data: bytes,
+    crop: CropBox | None = None,
+    *,
+    style: str = "photo",
 ) -> CardImageResponse:
     card = await _owned_card(user_id, card_id)
     if not settings.S3_IMAGE_BUCKET:
         raise CardImageError("IMAGE_STORAGE_NOT_CONFIGURED", 503)
-    content = await asyncio.to_thread(prepare_image, data, crop)
-    key = f"user-images/{user_id.hex}/{card_id.hex}/{uuid.uuid4().hex}.jpg"
+    content = await asyncio.to_thread(prepare_image, data, crop, style=style)
+    extension = "png" if style == "sticker" else "jpg"
+    key = f"user-images/{user_id.hex}/{card_id.hex}/{uuid.uuid4().hex}.{extension}"
     updated = card.model_copy(update={"image_key": key})
     try:
         await asyncio.to_thread(_put_object, key, content)
@@ -242,7 +275,7 @@ async def set_card_image(
         raise
     await _cleanup(card)
     urls = await card_image_urls([updated])
-    return CardImageResponse(image_url=urls.get(updated.id), has_image=True)
+    return CardImageResponse(image_url=urls.get(updated.id), has_image=True, image_style=style)
 
 
 async def delete_card_image(user_id: uuid.UUID, card_id: uuid.UUID) -> CardImageResponse:

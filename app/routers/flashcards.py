@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from pydantic import ValidationError
@@ -94,6 +95,7 @@ async def upload_flashcard_image(
     user_flashcard_id: uuid.UUID,
     file: UploadFile = File(...),
     crop: str | None = Form(None, max_length=512),
+    style: Literal["photo", "sticker"] = Form("photo"),
     current_user: User = Depends(get_current_user),
 ) -> CardImageResponse:
     if (file.content_type or "").lower() not in {"image/jpeg", "image/png"}:
@@ -106,7 +108,7 @@ async def upload_flashcard_image(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail="INVALID_CROP_BOX") from exc
     try:
-        return await set_card_image(current_user.id, user_flashcard_id, data, box)
+        return await set_card_image(current_user.id, user_flashcard_id, data, box, style=style)
     except CardImageError as exc:
         raise HTTPException(status_code=exc.status, detail=str(exc)) from exc
 

@@ -9,6 +9,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
+RUN python scripts/download_sticker_model.py
 
 EXPOSE 8000
 
