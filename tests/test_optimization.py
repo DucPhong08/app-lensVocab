@@ -156,7 +156,7 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
                     self.assertEqual(result.status_code, 502)
                     self.assertEqual(result.json()["detail"], "AI_CONTENT_INVALID")
 
-            async def failed_stream(*args):
+            async def failed_stream(*args, **kwargs):
                 raise ai_service.BedrockOutputError("bad")
                 yield  # make it an async generator
 
@@ -197,7 +197,7 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
         with (
             patch.object(ai_service, "_clients", {}),
             patch.object(ai_service, "_get_boto3_session", return_value=main),
-            patch.object(ai_service, "_get_embedding_session", return_value=embedding),
+            patch.object(ai_service, "_get_bedrock_session", return_value=embedding),
         ):
             first = ai_service._get_bedrock_client()
             self.assertIs(first, ai_service._get_bedrock_client())
@@ -205,7 +205,6 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
                 "bedrock-runtime", config=ai_service._BOTO_CONFIG
             )
             main.client.assert_not_called()
-            self.assertIs(first, ai_service._get_embedding_client())
             ai_service._get_rekognition_client()
             main.client.assert_called_once_with("rekognition", config=ai_service._BOTO_CONFIG)
             ai_service.close_aws_clients()

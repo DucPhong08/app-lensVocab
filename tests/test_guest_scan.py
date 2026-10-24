@@ -80,85 +80,57 @@ class TestGuestScan(unittest.TestCase):
         with patch.dict("os.environ", {"RENDER": "false"}):
             self.assertEqual(client_ip(request), "192.0.2.3")
         with patch.dict("os.environ", {"RENDER": "true"}):
-            self.assertEqual(client_ip(request), "203.0.113.4")
+            self.assertEqual(client_ip(request), "192.0.2.3")
 
     def test_client_ip_with_trusted_proxies(self):
-        # 1. Localhost Nginx sends X-Real-IP
-        req_nginx = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/",
-                "client": ("127.0.0.1", 54321),
-                "headers": [(b"x-real-ip", b"203.0.113.50")],
-            }
-        )
-        with patch.dict("os.environ", {"RENDER": "false"}):
-            self.assertEqual(client_ip(req_nginx), "203.0.113.50")
+        from app.config import settings
 
-        # 2. Cloudflare CF-Connecting-IP
-        req_cf = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/",
-                "client": ("127.0.0.1", 54321),
-                "headers": [
-                    (b"cf-connecting-ip", b"198.51.100.99"),
-                    (b"x-forwarded-for", b"10.0.0.1"),
-                ],
-            }
-        )
-        with patch.dict("os.environ", {"RENDER": "false"}):
-            self.assertEqual(client_ip(req_cf), "198.51.100.99")
+        def request(peer, headers):
+            return Request(
+                {
+                    "type": "http",
+                    "method": "POST",
+                    "path": "/",
+                    "client": (peer, 80),
+                    "headers": [(key.encode(), value.encode()) for key, value in headers.items()],
+                }
+            )
 
-        # 3. Docker CIDR subnet in TRUSTED_PROXIES
-        req_docker = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/",
-                "client": ("172.17.0.2", 80),
-                "headers": [(b"x-real-ip", b"198.51.100.77")],
-            }
-        )
-        with patch(
-            "app.services.guest_quota_service.settings.TRUSTED_PROXIES",
-            "127.0.0.1,::1,172.16.0.0/12",
+        with (
+            patch.object(settings, "TRUST_PROXY_HEADERS", True),
+            patch.object(settings, "TRUSTED_PROXIES", "127.0.0.1,::1,172.16.0.0/12"),
+            patch.object(settings, "PROXY_CLIENT_IP_HEADER", "x-forwarded-for"),
         ):
-            with patch.dict("os.environ", {"RENDER": "false"}):
-                self.assertEqual(client_ip(req_docker), "198.51.100.77")
-
-        # 4. TRUST_PROXY_HEADERS=True trusts forwarded headers globally
-        req_untrusted_peer = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/",
-                "client": ("192.0.2.3", 80),
-                "headers": [(b"x-forwarded-for", b"203.0.113.88")],
-            }
-        )
-        with patch("app.services.guest_quota_service.settings.TRUST_PROXY_HEADERS", True):
-            with patch.dict("os.environ", {"RENDER": "false"}):
-                self.assertEqual(client_ip(req_untrusted_peer), "203.0.113.88")
-
-        # 5. Invalid forwarded candidate falls back safely to peer_host
-        req_invalid = Request(
-            {
-                "type": "http",
-                "method": "POST",
-                "path": "/",
-                "client": ("127.0.0.1", 80),
-                "headers": [(b"x-real-ip", b"invalid-ip-string")],
-            }
-        )
-        with patch.dict("os.environ", {"RENDER": "false"}):
-            self.assertEqual(client_ip(req_invalid), "127.0.0.1")
-
-        # 6. is_trusted_proxy helper unit check
-        self.assertTrue(is_trusted_proxy("127.0.0.1"))
-        self.assertFalse(is_trusted_proxy("192.0.2.3"))
+            self.assertTrue(is_trusted_proxy("127.0.0.1"))
+            self.assertFalse(is_trusted_proxy("192.0.2.3"))
+            self.assertEqual(
+                client_ip(request("127.0.0.1", {"x-forwarded-for": "198.51.100.1, 203.0.113.4"})),
+                "203.0.113.4",
+            )
+            self.assertEqual(
+                client_ip(request("172.17.0.2", {"x-forwarded-for": "203.0.113.4, 172.17.0.3"})),
+                "203.0.113.4",
+            )
+            self.assertEqual(
+                client_ip(request("192.0.2.3", {"x-forwarded-for": "203.0.113.4"})), "192.0.2.3"
+            )
+            self.assertEqual(
+                client_ip(
+                    request(
+                        "127.0.0.1",
+                        {"cf-connecting-ip": "198.51.100.1", "x-forwarded-for": "203.0.113.4"},
+                    )
+                ),
+                "203.0.113.4",
+            )
+            with self.assertRaises(GuestScanLimitError):
+                client_ip(request("127.0.0.1", {"x-forwarded-for": "invalid-ip"}))
+            with patch.object(settings, "PROXY_CLIENT_IP_HEADER", "x-real-ip"):
+                self.assertEqual(
+                    client_ip(request("127.0.0.1", {"x-real-ip": "203.0.113.4"})), "203.0.113.4"
+                )
+            with patch.object(settings, "TRUST_PROXY_HEADERS", False):
+                self.assertFalse(is_trusted_proxy("127.0.0.1"))
 
     @patch("app.services.guest_quota_service.fetch_system_settings", new_callable=AsyncMock)
     def test_redis_budget_denies_after_limit_and_respects_maintenance(self, get_settings):

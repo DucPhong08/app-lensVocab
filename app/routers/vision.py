@@ -17,6 +17,7 @@ from app.services.quota_service import (
     QuotaExceededError,
     check_and_consume_quota,
 )
+from app.services.system_setting_service import fetch_system_settings
 from app.services.vision_service import _format_sse, execute_vision_scan, execute_vision_stream
 
 logger = logging.getLogger(__name__)
@@ -80,8 +81,9 @@ async def scan_image_guest(request: Request, file: UploadFile = File(...)) -> Sc
     image_bytes = await read_scan_image(file)
     redis = get_redis()
     try:
-        await consume_guest_quota(request, redis)
-        return await execute_vision_scan(image_bytes, None, redis)
+        system_settings = (await fetch_system_settings()).model_copy(deep=True)
+        await consume_guest_quota(request, redis, system_settings=system_settings)
+        return await execute_vision_scan(image_bytes, None, redis, system_settings=system_settings)
     except _SCAN_ERRORS as exc:
         raise scan_http_error(exc) from exc
 
@@ -93,8 +95,11 @@ async def scan_image(
     image_bytes = await read_scan_image(file)
     redis = get_redis()
     try:
-        await check_and_consume_quota(current_user, redis)
-        return await execute_vision_scan(image_bytes, current_user, redis)
+        system_settings = (await fetch_system_settings()).model_copy(deep=True)
+        await check_and_consume_quota(current_user, redis, system_settings=system_settings)
+        return await execute_vision_scan(
+            image_bytes, current_user, redis, system_settings=system_settings
+        )
     except _SCAN_ERRORS as exc:
         raise scan_http_error(exc) from exc
 
@@ -106,13 +111,16 @@ async def scan_image_stream(
     image_bytes = await read_scan_image(file)
     redis = get_redis()
     try:
-        await check_and_consume_quota(current_user, redis)
+        system_settings = (await fetch_system_settings()).model_copy(deep=True)
+        await check_and_consume_quota(current_user, redis, system_settings=system_settings)
     except _SCAN_ERRORS as exc:
         raise scan_http_error(exc) from exc
 
     async def events() -> AsyncGenerator[str, None]:
         try:
-            async for event in execute_vision_stream(image_bytes, current_user, redis):
+            async for event in execute_vision_stream(
+                image_bytes, current_user, redis, system_settings=system_settings
+            ):
                 yield event
         except _SCAN_ERRORS as exc:
             yield _format_sse("error", {"step": "ERROR", "detail": scan_http_error(exc).detail})

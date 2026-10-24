@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from typing import Literal
+
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -30,7 +33,7 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "ap-southeast-1"  # Region chính: Rekognition, Polly
-    # Region Bedrock dùng chung cho Nova Lite và Titan; giữ tên env hiện có
+    # Region Bedrock cho Nova Lite; giữ tên env legacy để không đổi deployment
     AWS_EMBEDDING_REGION: str = ""  # Nếu để trống → fallback về AWS_REGION
 
     # AWS Bedrock
@@ -39,11 +42,13 @@ class Settings(BaseSettings):
 
     # AWS Rekognition
     REKOGNITION_MAX_LABELS: int = 5
-    REKOGNITION_MIN_CONFIDENCE: float = 50.0
+    REKOGNITION_MIN_CONFIDENCE: float = Field(25.0, ge=0, le=100)
+    REKOGNITION_CANDIDATE_LIMIT: int = Field(30, ge=20, le=1000)
 
     # AWS Polly
     POLLY_VOICE_ID: str = "Joanna"
     POLLY_OUTPUT_FORMAT: str = "mp3"
+    POLLY_ENGINE: Literal["standard", "neural"] = "standard"
 
     # ── Business Rules ───────────────────────────────────────────────────────
     FREE_DAILY_QUOTA: int = 10
@@ -58,6 +63,9 @@ class Settings(BaseSettings):
     # ── Proxy & Network ──────────────────────────────────────────────────────
     TRUST_PROXY_HEADERS: bool = False
     TRUSTED_PROXIES: str = "127.0.0.1,::1"
+    PROXY_CLIENT_IP_HEADER: Literal["x-forwarded-for", "x-real-ip", "cf-connecting-ip"] = (
+        "x-forwarded-for"
+    )
 
 
 settings = Settings()

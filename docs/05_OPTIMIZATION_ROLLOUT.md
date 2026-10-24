@@ -1,6 +1,6 @@
 # Correctness and optimization rollout — 2026-10-11
 
-This document supersedes older descriptions of parent/alias cache hits and Redis counters for authenticated users.
+This document records the 2026-10-11/24 changes. For the latest pagination/audio/voice and scan contract, [06_MVP_SCAN_AND_DELIVERY.md](06_MVP_SCAN_AND_DELIVERY.md) takes precedence.
 
 
 ## Auth and quota refactor — 2026-10-24

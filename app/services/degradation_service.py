@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from enum import Enum
 
+from app.models.setting import SystemSetting
 from app.services.ai_service import fallback_keyword_from_context
 from app.services.system_setting_service import fetch_system_settings
 
@@ -35,7 +36,7 @@ def _normalize_threshold_percent(threshold: float) -> float:
 
     Lưu ý: cách đoán này chỉ đáng tin với khoảng giá trị hợp lý cho một ngưỡng
     nhận diện. Nếu set đúng 1.0, hàm coi là 100% (ngưỡng cao nhất) — nếu ý định
-    thực sự là "1%" thì phải set thành số nguyên 1, không phải 1.0. Nên thống
+    thực sự là "1%" thì dùng 0.01; số nguyên 1 cũng được hiểu là 100%. Nên thống
     nhất 1 convention duy nhất trong settings về lâu dài thay vì dựa vào đoán.
     """
     threshold_percent = threshold * 100 if threshold <= 1.0 else threshold
@@ -46,6 +47,8 @@ async def evaluate_vision_result(
     keyword: str | None,
     confidence: float,
     raw_description: str,
+    *,
+    system_settings: SystemSetting | None = None,
 ) -> VisionAnalysis:
     """
     Xử lý Graceful Degradation:
@@ -53,7 +56,9 @@ async def evaluate_vision_result(
     - Nếu confidence thấp hoặc keyword rỗng → Gọi AWS Bedrock fallback từ raw_description
     - Nếu fallback cũng thất bại → Trả về AI_COULD_NOT_RECOGNIZE để client điều hướng nhập tay
     """
-    system_settings = await fetch_system_settings()
+    system_settings = (
+        system_settings if system_settings is not None else await fetch_system_settings()
+    )
     threshold_percent = _normalize_threshold_percent(system_settings.vision_confidence_threshold)
 
     if keyword and confidence >= threshold_percent:
@@ -61,6 +66,13 @@ async def evaluate_vision_result(
             status=DegradationResult.OK,
             keyword=keyword.lower().strip(),
             confidence=confidence,
+        )
+
+    if not raw_description.strip():
+        return VisionAnalysis(
+            status=DegradationResult.UNRECOGNIZABLE,
+            confidence=confidence,
+            message=_UNRECOGNIZABLE_MESSAGE,
         )
 
     logger.info(

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from botocore.exceptions import BotoCoreError, ClientError
 
+from app.models.setting import SystemSetting
 from app.models.user import User
 from app.schemas.vision import BoundingBoxSchema, DetectedObjectItem, ScanResponse
 from app.services.ai_service import detect_image_labels
@@ -25,9 +26,11 @@ def _format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def resolve_max_objects(user: User | None) -> int:
+async def resolve_max_objects(
+    user: User | None, system_settings: SystemSetting | None = None
+) -> int:
     """Tính toán số vật thể tối đa, áp dụng trần hệ thống cho cả khách."""
-    sys_settings = await fetch_system_settings()
+    sys_settings = system_settings if system_settings is not None else await fetch_system_settings()
     admin_max = getattr(sys_settings, "max_detected_objects", 5)
     if user is None:
         return min(5, admin_max)
@@ -43,6 +46,8 @@ async def execute_vision_scan(
     image_bytes: bytes,
     current_user: User | None,
     redis: Redis,
+    *,
+    system_settings: SystemSetting | None = None,
 ) -> ScanResponse:
     """
     Toàn bộ nghiệp vụ quét ảnh:
@@ -52,7 +57,10 @@ async def execute_vision_scan(
       4. Graceful Degradation (Bedrock Fallback nếu < 50%)
       5. Tra cứu Cache đa tầng / Sinh Bedrock & Polly
     """
-    effective_max = await resolve_max_objects(current_user)
+    system_settings = (
+        system_settings if system_settings is not None else await fetch_system_settings()
+    )
+    effective_max = await resolve_max_objects(current_user, system_settings)
 
     vision_result = await detect_image_labels(image_bytes, max_labels=effective_max)
 
@@ -80,6 +88,7 @@ async def execute_vision_scan(
         keyword=vision_result.top_label,
         confidence=vision_result.top_confidence,
         raw_description=vision_result.raw_description,
+        system_settings=system_settings,
     )
 
     if analysis.status == DegradationResult.UNRECOGNIZABLE:
@@ -99,7 +108,7 @@ async def execute_vision_scan(
     )
 
     box_schema: BoundingBoxSchema | None = None
-    if vision_result.top_bounding_box:
+    if analysis.status == DegradationResult.OK and vision_result.top_bounding_box:
         box_schema = BoundingBoxSchema(
             width=vision_result.top_bounding_box.width,
             height=vision_result.top_bounding_box.height,
@@ -132,9 +141,14 @@ async def execute_vision_stream(
     image_bytes: bytes,
     current_user: User,
     redis: Redis,
+    *,
+    system_settings: SystemSetting | None = None,
 ) -> AsyncGenerator[str, None]:
     """Generator phát sự kiện Server-Sent Events (SSE) theo tiến trình nhận diện."""
-    effective_max = await resolve_max_objects(current_user)
+    system_settings = (
+        system_settings if system_settings is not None else await fetch_system_settings()
+    )
+    effective_max = await resolve_max_objects(current_user, system_settings)
 
     # 1. Báo bắt đầu quét ảnh
     yield _format_sse(
@@ -163,10 +177,11 @@ async def execute_vision_stream(
         keyword=vision_result.top_label,
         confidence=vision_result.top_confidence,
         raw_description=vision_result.raw_description,
+        system_settings=system_settings,
     )
 
     box_data: dict[str, float] | None = None
-    if vision_result.top_bounding_box:
+    if analysis.status == DegradationResult.OK and vision_result.top_bounding_box:
         box_data = {
             "width": vision_result.top_bounding_box.width,
             "height": vision_result.top_bounding_box.height,

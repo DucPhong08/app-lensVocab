@@ -6,6 +6,7 @@ import redis.asyncio as aioredis
 from beanie.odm.utils.encoder import Encoder
 from pymongo import ReturnDocument
 
+from app.models.setting import SystemSetting
 from app.models.user import AccountTier, User
 from app.services.system_setting_service import fetch_system_settings
 
@@ -22,12 +23,14 @@ class MaintenanceModeError(Exception):
     pass
 
 
-async def check_and_consume_quota(user: User, redis: aioredis.Redis) -> None:
+async def check_and_consume_quota(
+    user: User, redis: aioredis.Redis, *, system_settings: SystemSetting | None = None
+) -> None:
     """
     Kiểm tra bảo trì và khấu trừ hạn mức scan theo gói cước (Free & Premium).
     Lấy quota động từ SystemSetting (Admin có thể tăng giảm mà không cần restart).
     """
-    sys_settings = await fetch_system_settings()
+    sys_settings = system_settings if system_settings is not None else await fetch_system_settings()
     if sys_settings.maintenance_mode:
         raise MaintenanceModeError("MAINTENANCE_MODE")
 

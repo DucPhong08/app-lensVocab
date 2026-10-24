@@ -286,7 +286,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertIn('"cái ghế"', res.text)
 
     # ── 6. Test Multi-object Detection & Admin Ceiling ────────────────────────
-    @patch("app.services.vision_service.fetch_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
     @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
     @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_capped_by_admin_ceiling(
@@ -342,7 +342,7 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(data["detected_objects"]), 5)
         self.assertEqual(data["detected_objects"][0]["keyword"], "Obj1")
 
-    @patch("app.services.vision_service.fetch_system_settings", new_callable=AsyncMock)
+    @patch("app.routers.vision.fetch_system_settings", new_callable=AsyncMock)
     @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
     @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
     def test_max_detected_objects_user_lower_than_admin(

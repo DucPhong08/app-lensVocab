@@ -19,7 +19,7 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 * Luồng xử lý chi tiết của endpoint `POST /vision/scan`.
 * Cơ chế trích xuất BoundingBox & Label từ **AWS Rekognition**.
 * Thuật toán cứu nguy **Graceful Degradation** khi ảnh mờ hoặc góc chụp khó.
-* Giải thuật **Multi-tier Cache (4 tầng)**: Redis exact match $\rightarrow$ MongoDB exact match $\rightarrow$ Atlas `$vectorSearch` $\rightarrow$ AWS Bedrock + Polly.
+* Luồng tra đúng từ khóa: Redis exact match $\rightarrow$ MongoDB exact match $\rightarrow$ AWS Bedrock + Polly; không dùng vector search trong runtime.
 * Xử lý ngoại lệ, bảo vệ quota, và giới hạn payload kích thước ảnh.
 
 ### 3. [03. Thuật Toán Lặp Lại Ngắt Quãng SM-2 (Spaced Repetition)](03_SPACED_REPETITION_SM2.md)
@@ -33,3 +33,5 @@ Thư mục `docs/` chứa toàn bộ tài liệu kỹ thuật, kiến trúc, và
 * Hướng dẫn từng bước: Thêm một Router mới, sửa đổi Document Model, thêm tính năng AI mới.
 * Hướng dẫn viết Unit Test offline (cách mock model Beanie không cần DB).
 * Checklist bắt buộc kiểm tra trước khi hoàn thành task và commit code.
+
+- [06. MVP scan, phân trang, audio và cấu hình proxy](06_MVP_SCAN_AND_DELIVERY.md) — hành vi hiện tại và triển khai đồng bộ backend/UI.

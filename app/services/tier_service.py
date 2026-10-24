@@ -2,19 +2,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from app.config import settings
 from app.models.user import AccountTier, UserPreferences
 
 TIER_POLICIES: dict[AccountTier, dict[str, Any]] = {
     AccountTier.FREE: {
-        "allowed_voices": ["Joanna"],
-        "allowed_speeds": [1.0],
-        "allow_neural_voice": False,
+        "allowed_voices": [settings.POLLY_VOICE_ID],
+        "allowed_speeds": [0.75, 1.0, 1.25],
+        "allow_neural_voice": settings.POLLY_ENGINE == "neural",
         "max_daily_review_goal": 20,
     },
     AccountTier.PREMIUM: {
-        "allowed_voices": ["Joanna", "Matthew", "Amy", "Brian", "Olivia"],
+        "allowed_voices": [settings.POLLY_VOICE_ID],
         "allowed_speeds": [0.75, 1.0, 1.25],
-        "allow_neural_voice": True,
+        "allow_neural_voice": settings.POLLY_ENGINE == "neural",
         "max_daily_review_goal": 100,
     },
 }
@@ -34,11 +35,7 @@ def validate_user_preferences(tier: AccountTier, preferences: UserPreferences) -
     policy = resolve_tier_policy(tier)
 
     if preferences.preferred_voice_id not in policy["allowed_voices"]:
-        allowed = ", ".join(policy["allowed_voices"])
-        raise TierPolicyViolation(
-            f"Giọng đọc '{preferences.preferred_voice_id}' không thuộc quyền lợi gói {tier.value}. "
-            f"Các giọng được phép: {allowed}. Nâng cấp PREMIUM để mở khóa toàn bộ giọng đọc."
-        )
+        raise TierPolicyViolation(f"MVP chỉ hỗ trợ giọng đọc chuẩn {settings.POLLY_VOICE_ID}.")
 
     if preferences.voice_speed not in policy["allowed_speeds"]:
         allowed_speeds = ", ".join(f"{s}x" for s in policy["allowed_speeds"])

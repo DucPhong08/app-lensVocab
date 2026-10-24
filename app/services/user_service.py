@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.config import settings
 from app.models.user import User, UserPreferences
 from app.schemas.user import UpdatePreferencesRequest, UserPreferencesResponse
 from app.services.tier_service import resolve_tier_policy, validate_user_preferences
@@ -9,7 +10,9 @@ def read_preferences(current_user: User) -> UserPreferencesResponse:
     """Lấy thiết lập học tập cá nhân và danh sách quyền lợi theo gói cước."""
     policy = resolve_tier_policy(current_user.account_tier)
     return UserPreferencesResponse(
-        preferences=current_user.preferences,
+        preferences=current_user.preferences.model_copy(
+            update={"preferred_voice_id": settings.POLLY_VOICE_ID}
+        ),
         account_tier=current_user.account_tier,
         allowed_voices=policy["allowed_voices"],
         allowed_speeds=policy["allowed_speeds"],
@@ -22,7 +25,7 @@ async def update_preferences(
     current_user: User, body: UpdatePreferencesRequest
 ) -> UserPreferencesResponse:
     """Cập nhật thiết lập học tập cá nhân và kiểm tra quyền lợi gói cước."""
-    current_pref = current_user.preferences.model_dump()
+    current_pref = read_preferences(current_user).preferences.model_dump()
     update_data = body.model_dump(exclude_unset=True)
 
     updated_dict = {**current_pref, **update_data}
@@ -36,7 +39,9 @@ async def update_preferences(
 
     policy = resolve_tier_policy(current_user.account_tier)
     return UserPreferencesResponse(
-        preferences=current_user.preferences,
+        preferences=current_user.preferences.model_copy(
+            update={"preferred_voice_id": settings.POLLY_VOICE_ID}
+        ),
         account_tier=current_user.account_tier,
         allowed_voices=policy["allowed_voices"],
         allowed_speeds=policy["allowed_speeds"],

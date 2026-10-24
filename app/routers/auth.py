@@ -13,6 +13,7 @@ from app.services.auth_service import (
     create_access_token,
     register_user,
 )
+from app.services.user_service import read_preferences
 
 router = APIRouter()
 
@@ -55,4 +56,6 @@ async def login(body: LoginRequest) -> TokenResponse:
 @router.get("/auth/me", response_model=UserMeResponse)
 async def get_me(current_user: User = Depends(get_current_user)) -> UserMeResponse:
     """Lấy thông tin người dùng hiện tại và hạn mức quét còn lại."""
-    return UserMeResponse.model_validate(current_user, from_attributes=True)
+    response = UserMeResponse.model_validate(current_user, from_attributes=True)
+    response.preferences = read_preferences(current_user).preferences
+    return response
