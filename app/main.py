@@ -25,7 +25,9 @@ async def lifespan(app: FastAPI):
     await setup_beanie()
     yield
     from app.services.ai_service import close_aws_clients
+    from app.services.card_image_service import close_storage_client
 
+    close_storage_client()
     close_aws_clients()
     await close_redis_pool()
     close_motor_client()
@@ -83,14 +85,21 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(request: Request, exc: RequestValidationError):
+        # Invalid input can contain passwords or other private request data.
+        details = jsonable_encoder(
+            [
+                {key: value for key, value in error.items() if key != "input"}
+                for error in exc.errors()
+            ]
+        )
         return JSONResponse(
             status_code=422,
             content={
                 "status_code": 422,
                 "message": "VALIDATION_ERROR",
                 "error": "Unprocessable Entity",
-                "data": jsonable_encoder(exc.errors()),
-                "detail": jsonable_encoder(exc.errors()),
+                "data": details,
+                "detail": details,
             },
         )
 

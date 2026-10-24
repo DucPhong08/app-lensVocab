@@ -265,6 +265,7 @@ class TestTodayQueueLimit(unittest.IsolatedAsyncioTestCase):
         due_query.limit.return_value = due_query
         due_query.to_list = AsyncMock(return_value=[user_card])
         global_query = MagicMock()
+        global_query.project.return_value = global_query
         global_query.to_list = AsyncMock(return_value=[global_card])
         settings = SimpleNamespace(free_daily_review_cap=2)
 

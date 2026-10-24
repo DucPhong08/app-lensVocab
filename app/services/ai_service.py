@@ -38,18 +38,13 @@ def _get_boto3_session() -> boto3.Session:
 
 
 @lru_cache(maxsize=1)
-def _get_embedding_session() -> boto3.Session:
-    """Session Bedrock cho Nova và Titan — dùng AWS_EMBEDDING_REGION nếu có.
-
-    Titan Embeddings v2 chưa hỗ trợ ap-southeast-1 (Singapore), nên khi đổi
-    AWS_REGION sang SIN để giảm latency, cần tách session này để vẫn gọi được
-    Titan ở region hỗ trợ (vd: ap-southeast-2 Sydney, us-east-1...).
-    """
-    embedding_region = settings.AWS_EMBEDDING_REGION or settings.AWS_REGION
+def _get_bedrock_session() -> boto3.Session:
+    """Keep the deployed Bedrock region; the legacy environment name is compatible."""
+    bedrock_region = settings.AWS_EMBEDDING_REGION or settings.AWS_REGION
     return boto3.Session(
         aws_access_key_id=settings.AWS_ACCESS_KEY_ID or None,
         aws_secret_access_key=settings.AWS_SECRET_ACCESS_KEY or None,
-        region_name=embedding_region,
+        region_name=bedrock_region,
     )
 
 
@@ -58,11 +53,11 @@ _client_lock = Lock()
 _clients: dict[str, object] = {}
 
 
-def _get_aws_client(service: str, *, embedding: bool = False):
-    key = "embedding" if embedding else service
+def _get_aws_client(service: str, *, bedrock: bool = False):
+    key = "bedrock" if bedrock else service
     with _client_lock:
         if key not in _clients:
-            session = _get_embedding_session() if embedding else _get_boto3_session()
+            session = _get_bedrock_session() if bedrock else _get_boto3_session()
             _clients[key] = session.client(service, config=_BOTO_CONFIG)
         return _clients[key]
 
@@ -79,12 +74,8 @@ def _get_rekognition_client():
 
 
 def _get_bedrock_client():
-    # Preserve the shared Nova/Titan region configured in existing deployments.
-    return _get_aws_client("bedrock-runtime", embedding=True)
-
-
-def _get_embedding_client():
-    return _get_aws_client("bedrock-runtime", embedding=True)
+    # Keep the region configured in existing deployments.
+    return _get_aws_client("bedrock-runtime", bedrock=True)
 
 
 def _get_polly_client():
@@ -136,6 +127,26 @@ class VisionResult:
     raw_description: str
 
 
+_CONTEXT_LABELS = frozenset(
+    {
+        "indoors",
+        "outdoors",
+        "interior design",
+        "room",
+        "nature",
+        "wood",
+        "plastic",
+        "metal",
+        "electronics",
+        "furniture",
+        "object",
+        "material",
+        "texture",
+        "pattern",
+    }
+)
+
+
 def _sync_detect_labels(
     image_bytes: bytes, max_labels: int = settings.REKOGNITION_MAX_LABELS
 ) -> VisionResult:
@@ -144,7 +155,7 @@ def _sync_detect_labels(
     try:
         response = client.detect_labels(
             Image={"Bytes": image_bytes},
-            MaxLabels=safe_max,
+            MaxLabels=max(safe_max, settings.REKOGNITION_CANDIDATE_LIMIT),
             MinConfidence=settings.REKOGNITION_MIN_CONFIDENCE,
         )
     except ClientError as exc:
@@ -190,14 +201,19 @@ def _sync_detect_labels(
             )
         )
 
-    # ── Thuật toán chọn nhãn thông minh (Smart Selection) ────────────────────
-    # 1. Ưu tiên đồ vật cụ thể có tọa độ (Instances > 0) trước để người học
-    #    học từ thực thể (Chair, Bottle) thay vì chất liệu/bối cảnh (Wood, Indoors).
-    # 2. Trong cùng nhóm, sắp xếp theo confidence giảm dần.
-    parsed_labels.sort(key=lambda x: (x.has_instance, x.confidence), reverse=True)
+    # Keep context for fallback, but prefer a learnable noun even without a box.
+    parsed_labels.sort(
+        key=lambda label: (
+            label.name.casefold() not in _CONTEXT_LABELS,
+            label.has_instance,
+            label.confidence,
+        ),
+        reverse=True,
+    )
+    raw_desc = ", ".join(label.name for label in parsed_labels)
     parsed_labels = parsed_labels[:safe_max]
     top = parsed_labels[0]
-    raw_desc = ", ".join(lbl.name for lbl in parsed_labels)
+    context_only = top.name.casefold() in _CONTEXT_LABELS
 
     logger.info(
         "rekognition_parsed top=%s (confidence=%.1f%%, has_box=%s, categories=%s, total=%d)",
@@ -210,9 +226,9 @@ def _sync_detect_labels(
 
     return VisionResult(
         labels=parsed_labels,
-        top_label=top.name,
+        top_label=None if context_only else top.name,
         top_confidence=top.confidence,
-        top_bounding_box=top.bounding_box,
+        top_bounding_box=None if context_only else top.bounding_box,
         top_categories=top.categories,
         top_aliases=top.aliases,
         top_parents=top.parents,
@@ -328,42 +344,9 @@ async def generate_flashcard_content(keyword: str) -> GeneratedFlashcard:
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. AWS Bedrock (Amazon Titan Embeddings v2): Tạo vector ngữ nghĩa
+# 3. AWS Polly: Tạo âm thanh dùng chung cho từ vựng
 # ─────────────────────────────────────────────────────────────────────────────
 
-
-@retry(
-    reraise=True,
-    stop=stop_after_attempt(3),
-    wait=wait_exponential(multiplier=1, min=2, max=8),
-    retry=retry_if_exception_type(KeyError),
-)
-def _sync_create_embedding(text: str) -> list[float]:
-    client = _get_embedding_client()
-    body = json.dumps({"inputText": text.lower().strip()})
-
-    response = client.invoke_model(
-        modelId=settings.BEDROCK_EMBEDDING_MODEL_ID,
-        contentType="application/json",
-        accept="application/json",
-        body=body,
-    )
-
-    data = json.loads(response["body"].read())
-    try:
-        return data["embedding"]
-    except KeyError:
-        logger.error("titan_embedding_missing_field: %s", data)
-        raise
-
-
-async def create_titan_embedding(text: str) -> list[float]:
-    return await asyncio.to_thread(_sync_create_embedding, text)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 4. AWS Polly: Phát âm từ vựng (Text-To-Speech)
-# ─────────────────────────────────────────────────────────────────────────────
 
 _POLLY_UNSUPPORTED_ENGINE_ERROR = "EngineNotSupportedException"
 
@@ -371,7 +354,7 @@ _POLLY_UNSUPPORTED_ENGINE_ERROR = "EngineNotSupportedException"
 def _sync_synthesize_speech(
     text: str,
     voice_id: str | None = None,
-    engine: str = "neural",
+    engine: str | None = None,
 ) -> str:
     """Gọi AWS Polly chuyển từ vựng thành MP3 audio và encode base64."""
     client = _get_polly_client()
@@ -382,7 +365,7 @@ def _sync_synthesize_speech(
             Text=text,
             OutputFormat=settings.POLLY_OUTPUT_FORMAT,
             VoiceId=selected_voice,
-            Engine=engine,
+            Engine=engine or settings.POLLY_ENGINE,
         )
     except ClientError as exc:
         # Chỉ fallback về standard khi đúng lỗi "voice này chưa hỗ trợ neural
@@ -408,13 +391,13 @@ def _sync_synthesize_speech(
 async def synthesize_speech(
     text: str,
     voice_id: str | None = None,
-    engine: str = "neural",
+    engine: str | None = None,
 ) -> str:
     return await asyncio.to_thread(_sync_synthesize_speech, text, voice_id, engine)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. Graceful Degradation Fallback: Tìm từ vựng từ bối cảnh
+# 4. Graceful Degradation Fallback: Tìm từ vựng từ bối cảnh
 # ─────────────────────────────────────────────────────────────────────────────
 
 _FALLBACK_SYSTEM_PROMPT = (

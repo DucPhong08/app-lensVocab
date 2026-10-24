@@ -40,6 +40,7 @@ class UserFlashcard(Document):
     user_id: uuid.UUID
     global_flashcard_id: uuid.UUID
 
+    image_key: str | None = Field(default=None, repr=False)
     status: FlashcardStatus = FlashcardStatus.DRAFT
 
     interval: int = 1

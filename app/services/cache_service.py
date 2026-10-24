@@ -8,7 +8,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 import redis.asyncio as aioredis
-from pymongo.errors import DuplicateKeyError, OperationFailure
+from pymongo.errors import DuplicateKeyError
 
 from app.config import settings
 from app.models.flashcard import GlobalFlashcard
@@ -95,58 +95,13 @@ async def _save_to_redis(redis: aioredis.Redis, payload: FlashcardPayload) -> No
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Tầng 2 – MongoDB Atlas (Exact Match rồi mới tới Vector Search)
+# Tầng 2 – MongoDB Exact Match
 # ─────────────────────────────────────────────────────────────────────────────
 
 
 async def _find_exact_mongodb(keyword: str) -> GlobalFlashcard | None:
-    """Exact match theo keyword — rẻ hơn vector search rất nhiều (không tốn Titan
-    embedding), nên luôn thử trước. Bắt trường hợp Redis miss nhưng Mongo vẫn còn
-    record cũ (vd TTL Redis hết hạn)."""
+    """Read the exact word when the Redis entry has expired or was evicted."""
     return await GlobalFlashcard.find_one({"keyword": keyword})
-
-
-async def _search_mongodb_vector(embedding: list[float]) -> GlobalFlashcard | None:
-    """
-    Tìm từ tương đồng ngữ nghĩa bằng $vectorSearch aggregation của MongoDB Atlas.
-    Vector dimension: 1024 (Amazon Titan Embeddings v2).
-    """
-    pipeline = [
-        {
-            "$vectorSearch": {
-                "index": settings.VECTOR_INDEX_NAME,
-                "path": "embedding",
-                "queryVector": embedding,
-                "numCandidates": 20,
-                "limit": 1,
-            }
-        },
-        {
-            "$addFields": {
-                "score": {"$meta": "vectorSearchScore"},
-                "id": "$_id",
-            }
-        },
-        {"$match": {"score": {"$gte": settings.SEMANTIC_SIMILARITY_THRESHOLD}}},
-    ]
-
-    try:
-        results = await GlobalFlashcard.aggregate(pipeline).to_list(length=1)
-    except OperationFailure as exc:
-        # Case mong đợi: index vector chưa tạo (vd dev local chưa config Atlas
-        # Search). An toàn để bỏ qua sang Tầng 3.
-        logger.warning("vector_search_index_missing: %s", exc)
-        return None
-    except Exception as exc:
-        # Case KHÔNG mong đợi (Mongo down, network...) — log ở mức error để có
-        # alert riêng, khác với case index-chưa-tạo ở trên. Vẫn return None để
-        # user không bị vỡ luồng, nhưng phải nhìn thấy được trong monitoring.
-        logger.error("vector_search_unexpected_failure: %s", exc)
-        return None
-
-    if not results:
-        return None
-    return GlobalFlashcard.model_validate(results[0])
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -180,7 +135,7 @@ async def get_flashcard(
         return payload
 
     # ── Cache Miss: AWS Bedrock Nova Lite + AWS Polly (song song) ───────────────
-    # Bedrock và Polly độc lập nhau — chạy song song giảm ~1.2s so với tuần tự.
+    # Bedrock and Polly are independent; no fixed latency improvement is assumed.
     logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly song song", normalized)
 
     generated, audio_b64 = await asyncio.gather(

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import hashlib
 import ipaddress
-import os
 from datetime import UTC, datetime, timedelta
 from typing import Any, cast
 
@@ -10,6 +9,7 @@ from fastapi import Request
 from redis.asyncio import Redis
 
 from app.config import settings
+from app.models.setting import SystemSetting
 from app.services.system_setting_service import fetch_system_settings
 
 
@@ -33,24 +33,16 @@ return 0
 
 
 def is_trusted_proxy(peer_host: str) -> bool:
-    """Kiểm tra xem địa chỉ peer kết nối trực tiếp có phải là reverse proxy tin cậy."""
-    if os.getenv("RENDER") == "true" or settings.TRUST_PROXY_HEADERS:
-        return True
-    if not peer_host or not settings.TRUSTED_PROXIES:
+    """A flag never grants trust to peers outside the explicit IP/CIDR allowlist."""
+    if not settings.TRUST_PROXY_HEADERS or not peer_host:
         return False
     try:
-        peer_ip = ipaddress.ip_address(peer_host)
+        peer = ipaddress.ip_address(peer_host)
     except ValueError:
         return False
-
-    for item in (p.strip() for p in settings.TRUSTED_PROXIES.split(",")):
-        if not item:
-            continue
+    for value in settings.TRUSTED_PROXIES.split(","):
         try:
-            if "/" in item:
-                if peer_ip in ipaddress.ip_network(item, strict=False):
-                    return True
-            elif peer_ip == ipaddress.ip_address(item):
+            if peer in ipaddress.ip_network(value.strip(), strict=False):
                 return True
         except ValueError:
             continue
@@ -58,34 +50,39 @@ def is_trusted_proxy(peer_host: str) -> bool:
 
 
 def client_ip(request: Request) -> str:
-    """
-    Trích xuất IP thực của client an toàn.
-    Chỉ tin các header forwarded khi request đi qua proxy tin cậy (Render, Nginx, Docker, Cloudflare),
-    ngăn ngừa triệt để giả mạo IP (IP Spoofing) từ client bên ngoài.
-    """
     peer_host = request.client.host if request.client else ""
-
-    if is_trusted_proxy(peer_host):
-        raw_header = (
-            request.headers.get("cf-connecting-ip")
-            or request.headers.get("x-real-ip")
-            or request.headers.get("x-forwarded-for")
-        )
-        if raw_header:
-            candidate = raw_header.rsplit(",", 1)[-1].strip()
-            try:
-                return str(ipaddress.ip_address(candidate))
-            except ValueError:
-                pass
-
     try:
-        return str(ipaddress.ip_address(peer_host))
+        peer = str(ipaddress.ip_address(peer_host))
     except ValueError as exc:
         raise GuestScanLimitError("CLIENT_IP_UNAVAILABLE") from exc
+    if not is_trusted_proxy(peer):
+        return peer
+    raw = request.headers.get(settings.PROXY_CLIENT_IP_HEADER, "")
+    if not raw:
+        return peer
+    parts = raw.split(",")
+    if len(raw) > 4096 or len(parts) > 20:
+        raise GuestScanLimitError("CLIENT_IP_UNAVAILABLE")
+    if settings.PROXY_CLIENT_IP_HEADER != "x-forwarded-for" and len(parts) != 1:
+        raise GuestScanLimitError("CLIENT_IP_UNAVAILABLE")
+    try:
+        chain = [str(ipaddress.ip_address(value.strip())) for value in parts]
+    except ValueError as exc:
+        raise GuestScanLimitError("CLIENT_IP_UNAVAILABLE") from exc
+    # Walk only the verified proxy suffix; attacker-supplied left entries are ignored.
+    for candidate in reversed(chain):
+        if not is_trusted_proxy(peer):
+            break
+        peer = candidate
+    return peer
 
 
-async def consume_guest_quota(request: Request, redis: Redis) -> None:
-    system_settings = await fetch_system_settings()
+async def consume_guest_quota(
+    request: Request, redis: Redis, *, system_settings: SystemSetting | None = None
+) -> None:
+    system_settings = (
+        system_settings if system_settings is not None else await fetch_system_settings()
+    )
     if system_settings.maintenance_mode:
         raise GuestScanLimitError("MAINTENANCE_MODE")
     address_hash = hashlib.sha256(client_ip(request).encode("ascii")).hexdigest()

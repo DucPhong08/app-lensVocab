@@ -1,42 +1,82 @@
-# 🤖 AGENTS.md — Hướng Dẫn Dành Cho AI Agent Tiếp Quản Dự Án
+# AGENTS.md — AI Agent Guidance for LensVocab Backend
 
-Chào đồng nghiệp Agent! Đây là cẩm nang tóm tắt nhanh giúp bạn nắm bắt toàn bộ ngữ cảnh dự án **LensVocab Backend** trong 60 giây đầu tiên trước khi thực hiện bất kỳ thay đổi nào.
+Welcome! This document provides immediate context, operational rules, and architectural boundaries for the **LensVocab Backend** service.
 
 ---
 
-## ⚡ 1. Bản Đồ Hệ Thống Nhanh (System Sitemap)
+## 1. Tech Stack & Exact Versions
 
-| Thư mục / File | Trách nhiệm chính |
+- **Runtime & Language:** Python 3.12 (managed via `.venv`)
+- **Web Framework:** FastAPI 0.115.0 with Uvicorn 0.30.6
+- **Database & ODM:** MongoDB Atlas with Beanie 1.26.0 & Motor 3.6.0
+- **Cache & Rate Limiting:** Redis 5.1.0 (`hiredis`)
+- **Validation & Serialization:** Pydantic 2.9.2 & Pydantic-Settings 2.5.2
+- **Auth & Security:** Native Bcrypt >= 4.0.0, Python-Jose 3.3.0 (HS256 JWT)
+- **AI Services (AWS SDK Boto3 >= 1.36.0):**
+  - AWS Rekognition: Object & label detection
+  - AWS Bedrock: `amazon.nova-lite-v1:0` (vocabulary & contextual examples generation)
+  - AWS Bedrock Embeddings: `amazon.titan-embed-text-v2:0` (1024-dimensional semantic vectors)
+  - AWS Polly: Text-to-speech audio synthesis (`Joanna` standard voice)
+- **Linter & Code Style:** Ruff >= 0.6.0 (target Python 3.12, line length 100)
+
+---
+
+## 2. Key Domains & Module Map
+
+| Directory / Module | Responsibility |
 | :--- | :--- |
-| [`app/main.py`](file:///home/phong/Môn%20học/app-LensVocab/app/main.py) | Entrypoint FastAPI app, đăng ký router, lifespan quản lý MongoDB & Redis. |
-| [`app/models/`](file:///home/phong/Môn%20học/app-LensVocab/app/models) | **Database Entities (Beanie Documents):** `user.py`, `flashcard.py`, `review.py`, `setting.py`. |
-| [`app/schemas/`](file:///home/phong/Môn%20học/app-LensVocab/app/schemas) | **API Contracts (Pydantic DTOs):** Request/Response validation (`auth`, `user`, `admin`, `flashcard`, `review`, `vision`). |
-| [`app/services/`](file:///home/phong/Môn%20học/app-LensVocab/app/services) | **Pure Business Logic:** `auth_service`, `flashcard_service`, `review_service`, `vision_service`, `ai_service`, `cache_service`, `quota_service`, `sm2_service`, `tier_service`. |
-| [`app/routers/`](file:///home/phong/Môn%20học/app-LensVocab/app/routers) | **Thin HTTP Controllers:** Nhận request, xác thực dependency, ủy quyền cho Service và trả response. |
-| [`docs/`](file:///home/phong/Môn%20học/app-LensVocab/docs) | **Bộ tài liệu kỹ thuật chi tiết.** Đọc trước khi sửa đổi, cập nhật sau khi hoàn thành. |
+| [`app/main.py`](file:///home/phong/Môn%20học/app-LensVocab/app/main.py) | FastAPI application entrypoint, lifespan event (Beanie & Redis lifecycle), middleware, exception handlers. |
+| [`app/models/`](file:///home/phong/Môn%20học/app-LensVocab/app/models) | **Beanie Documents (Active Record):** `User`, `GlobalFlashcard`, `UserFlashcard`, `ReviewLog`, `SystemSetting`. |
+| [`app/schemas/`](file:///home/phong/Môn%20học/app-LensVocab/app/schemas) | **API Contracts (Pydantic DTOs):** Request/Response schemas for `auth`, `flashcard`, `review`, `user`, `vision`, `admin`. |
+| [`app/services/`](file:///home/phong/Môn%20học/app-LensVocab/app/services) | **Pure Business Services:** `ai_service`, `auth_service`, `cache_service`, `degradation_service`, `flashcard_service`, `quota_service`, `review_service`, `sm2_service`, `tier_service`. |
+| [`app/routers/`](file:///home/phong/Môn%20học/app-LensVocab/app/routers) | **Thin HTTP Controllers:** Dependency injection, error translation, delegating to services (`auth`, `flashcards`, `review`, `users`, `vision`, `admin`). |
+| [`app/dependencies/`](file:///home/phong/Môn%20học/app-LensVocab/app/dependencies) | FastAPI authentication dependencies: `get_current_user`, `get_current_admin`. |
+| [`docs/`](file:///home/phong/Môn%20học/app-LensVocab/docs) | Architecture guides, vision pipeline, SM-2 spaced repetition specs, and optimization rollout notes. |
 
 ---
 
-## 🛑 2. Những Điều CẤM KỴ (Hard Constraints)
+## 3. Exact Operational Commands
 
-1. **KHÔNG dùng `camelCase`:** Dự án tuân thủ nghiêm ngặt 100% `snake_case` ở mọi tầng (từ database field đến JSON response của API).
-2. **KHÔNG tạo lại `app/repositories/`:** Sử dụng trực tiếp Beanie Active Record (`Model.find()`, `model.save()`, `model.insert()`).
-3. **KHÔNG đổi model embedding tùy tiện:** Model `amazon.titan-embed-text-v2:0` tạo vector 1024 chiều, khớp cứng với `vocab_embedding_index` trong MongoDB Atlas.
-4. **KHÔNG gọi `git` trần:** Luôn luôn dùng `rtk git <command>` (ví dụ: `rtk git status`, `rtk git add .`, `rtk git commit`).
-5. **KHÔNG khởi tạo `User(...)` trực tiếp trong test unit offline:** Bắt buộc dùng `User.model_construct(...)` để tránh lỗi `CollectionWasNotInitialized` khi chưa kết nối MongoDB.
+Run all commands using the local virtual environment `.venv`:
+
+| Action | Command | Makefile Alias |
+| :--- | :--- | :--- |
+| **Development Server** | `.venv/bin/uvicorn app.main:app --reload` | `make dev` |
+| **Run All Tests** | `.venv/bin/python -m unittest discover tests` | `make test` |
+| **Linter Check** | `.venv/bin/ruff check .` | `make lint` |
+| **Format Code** | `.venv/bin/ruff format .` | `make format` |
+| **Full QA Gate** | `bash .agents/scripts/run-qa-check.sh` | — |
+| **Local Dependencies** | `docker compose up -d` | — |
 
 ---
 
-## 📖 3. Quy Trình Khi Sửa Đổi Hoặc Thêm Tính Năng
+## 4. Active Roles & Governance (Pruned Role Matrix)
 
-1. **Đọc tài liệu liên quan trong `docs/`:**
-   - Sửa luồng Scan / Cache / AWS AI: Đọc [`docs/02_VISION_AND_CACHE_PIPELINE.md`](file:///home/phong/Môn%20học/app-LensVocab/docs/02_VISION_AND_CACHE_PIPELINE.md).
-   - Sửa thuật toán Spaced Repetition: Đọc [`docs/03_SPACED_REPETITION_SM2.md`](file:///home/phong/Môn%20học/app-LensVocab/docs/03_SPACED_REPETITION_SM2.md).
-   - Quy trình thêm API mới / chỉnh sửa kiến trúc: Đọc [`docs/04_DEVELOPER_AND_AGENT_GUIDE.md`](file:///home/phong/Môn%20học/app-LensVocab/docs/04_DEVELOPER_AND_AGENT_GUIDE.md).
-2. **Viết test trước hoặc song song:** Đảm bảo test case bao phủ cả nhánh thành công và nhánh lỗi (400, 401, 403, 413, 502).
-3. **Chạy kiểm thử:**
-   ```bash
-   .venv/bin/python -m unittest discover tests
-   ```
-4. **Cập nhật tài liệu trong `docs/`:** Nếu có thay đổi về schema, endpoint, hay luồng nghiệp vụ, phải cập nhật file markdown trong `docs/` tương ứng.
-5. **Commit:** Sử dụng `rtk git commit -m "..."`.
+Only roles with active responsibilities in this backend service are activated:
+
+- **1. Tech Lead / Orchestrator:** Architecture decisions, Gate reviews, and trade-off resolutions.
+- **2. Product Manager (PM):** Spaced repetition logic, learning workflows, quota tiers (Free vs. Premium), and guest trial rules.
+- **5. Backend Engineer:** FastAPI routes, async business services, SSE streaming, AWS integrations, and error response contracts.
+- **6. QA Engineer:** Regression test suite (`unittest`), test boundaries, test integrity, and mocking patterns.
+- **9. Database Architect / DBA:** Beanie ODM schemas, MongoDB Atlas vector indexes, Redis caching policies, atomic quota pipelines.
+- **10. Dependency & Version Manager:** Python package compatibility, lockless pinning in `requirements.txt`, security advisories.
+- **11. Software Architect:** Layer boundaries (Router -> Service -> Active Record), degradation fallbacks, and anti-bloat standards.
+- **12. Security Engineer:** JWT validation, bcrypt password limits (72 UTF-8 bytes), credential redaction in validation errors, and admin RBAC.
+- **13. DevOps / SRE:** Docker containerization, health check endpoints, environment variable configuration, and AWS IAM policies.
+
+*(Roles pruned: UI/UX Designer, Frontend/Mobile Engineer, Data Analyst, Data Engineer — UI is located in a separate repository `lenvocab-ui`; no ETL/data warehouse pipelines exist here).*
+
+---
+
+## 5. Execution Contract & Hard Constraints
+
+1. **User Communication:** Always communicate with the user in **Vietnamese**. All code, commits, and comments remain in **English**.
+2. **Two-Gate Discipline:**
+   - **Gate 1 (Fact Check & Impact):** Inspect live code and schemas before proposing or implementing changes. Stop at Checkpoint 1 for architectural decisions; stop at Checkpoint 2 for destructive actions.
+   - **Gate 2 (Observed Evidence & YAGNI):** Every change must be verified with observed command output. No speculative features or unrelated refactors.
+3. **Hard Technical Constraints:**
+   - **100% `snake_case`:** Strictly enforce `snake_case` across all API JSON responses, database fields, and schemas.
+   - **NO `app/repositories/`:** Use Beanie Active Record directly.
+   - **Vector Embedding Consistency:** Titan Embed v2 (1024 dimensions) is hardwired to MongoDB Atlas `vocab_embedding_index`.
+   - **NO bare `git`:** Always use `rtk git <command>` (e.g. `rtk git status`, `rtk git commit`).
+   - **Offline Unit Tests:** Use `User.model_construct(...)` instead of `User(...)` to prevent `CollectionWasNotInitialized` errors when MongoDB is offline.

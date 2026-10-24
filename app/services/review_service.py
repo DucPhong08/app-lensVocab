@@ -9,7 +9,9 @@ from app.database import get_motor_client
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 from app.models.review import ReviewLog
 from app.models.user import AccountTier, User
+from app.schemas.flashcard import FlashcardText
 from app.schemas.review import ReviewCardResponse, SubmitReviewResponse
+from app.services.card_image_service import card_image_urls
 from app.services.sm2_service import compute_sm2
 from app.services.system_setting_service import fetch_system_settings
 
@@ -51,8 +53,11 @@ async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
         return []
 
     global_ids = [card.global_flashcard_id for card in sliced_cards]
-    global_cards = await GlobalFlashcard.find({"_id": {"$in": global_ids}}).to_list()
+    global_cards = (
+        await GlobalFlashcard.find({"_id": {"$in": global_ids}}).project(FlashcardText).to_list()
+    )
     global_map = {gc.id: gc for gc in global_cards}
+    image_urls = await card_image_urls(sliced_cards)
 
     result: list[ReviewCardResponse] = []
     for uc in sliced_cards:
@@ -68,7 +73,9 @@ async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
                 example_1=gc.example_1,
                 example_2=gc.example_2,
                 related_words=gc.related_words,
-                audio_base64=gc.audio_base64,
+                audio_base64=None,
+                image_url=image_urls.get(uc.id),
+                has_image=bool(uc.image_key),
                 interval=uc.interval,
                 repetitions=uc.repetitions,
                 efactor=uc.efactor,

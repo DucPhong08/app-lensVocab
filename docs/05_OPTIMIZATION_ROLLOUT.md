@@ -1,6 +1,19 @@
 # Correctness and optimization rollout — 2026-10-11
 
-This document supersedes older descriptions of parent/alias cache hits and Redis counters for authenticated users.
+This document records the 2026-10-11/24 changes. For the latest pagination/audio/voice and scan contract, [06_MVP_SCAN_AND_DELIVERY.md](06_MVP_SCAN_AND_DELIVERY.md) takes precedence.
+
+
+## Auth and quota refactor — 2026-10-24
+
+- Existing auth routes, token response fields and error codes remain compatible. No refresh/logout, OTP or social-login endpoints are added in this refactor.
+- Registration still checks email before hashing, and also translates a duplicate-key error during insert to `EMAIL_ALREADY_REGISTERED` (HTTP 400), covering simultaneous registrations of the same normalized email. Other Mongo failures are not classified as duplicate emails.
+- Email continues to be stripped/lowercased. Display names are now stripped, with an empty name stored as null. Password content is never stripped, normalized or truncated.
+- Registration rejects passwords longer than **72 UTF-8 bytes** with HTTP 422 before bcrypt runs. The existing minimum of six characters remains. This is a byte limit, so Vietnamese characters can occupy more than one byte. Login behavior is unchanged for oversized passwords: invalid bcrypt input is rejected as invalid credentials.
+- Validation errors retain the existing envelope and error locations/messages, but omit the raw `input` value from `data` and `detail` to avoid echoing passwords or private request data.
+- An explicit `timedelta(0)` token lifetime is now honored. The configured default still applies only when no lifetime is supplied. Invalid password hashes return false; unexpected bcrypt failures are allowed to surface as infrastructure failures rather than wrong credentials.
+- The auth dependency centralizes HTTP 401 responses and their Bearer challenge while retaining per-request active-user lookup and admin checks. `/auth/me` validates only the declared response fields from the User model; stored password hashes/admin internals are not exposed.
+- The quota refactor names the Mongo filter and update pipeline explicitly and shares one BSON encoder. Reset/decrement remains one atomic update with Mongo as the source of truth, Redis checked first, and **UTC day boundaries unchanged**. This change adds no quota reset, tier change, schema migration, dependency, or database operation during rollout.
+- Offline regression coverage includes zero token lifetime, UTF-8 password boundaries, validation redaction, concurrent duplicate registration, authentication failures and active/admin authorization. Real Mongo concurrency tests remain opt-in and require a disposable local replica set.
 
 ## API and behavior changes
 

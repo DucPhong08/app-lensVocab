@@ -7,8 +7,15 @@ from typing import TYPE_CHECKING
 from pymongo.errors import DuplicateKeyError
 
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
-from app.schemas.flashcard import ConfirmFlashcardRequest, FlashcardItemResponse
+from app.schemas.flashcard import (
+    ConfirmFlashcardRequest,
+    FlashcardAudioResponse,
+    FlashcardItemResponse,
+    FlashcardPageResponse,
+    FlashcardText,
+)
 from app.services.cache_service import _get_from_redis, save_global_flashcard
+from app.services.card_image_service import card_image_urls
 
 if TYPE_CHECKING:
     from redis.asyncio import Redis
@@ -63,6 +70,7 @@ async def confirm_card(
     else:
         await user_card.set({"status": FlashcardStatus.CONFIRMED})
 
+    image_urls = await card_image_urls([user_card])
     return FlashcardItemResponse(
         user_flashcard_id=user_card.id,
         global_flashcard_id=global_card.id,
@@ -73,6 +81,8 @@ async def confirm_card(
         example_2=global_card.example_2,
         related_words=global_card.related_words,
         audio_base64=global_card.audio_base64,
+        image_url=image_urls.get(user_card.id),
+        has_image=bool(user_card.image_key),
         status=user_card.status,
         interval=user_card.interval,
         repetitions=user_card.repetitions,
@@ -81,38 +91,77 @@ async def confirm_card(
     )
 
 
-async def list_cards(user_id: uuid.UUID) -> list[FlashcardItemResponse]:
-    """Lấy danh sách tất cả các flashcard của người dùng."""
-    user_cards = await UserFlashcard.find({"user_id": user_id}).to_list()
+class CardAudioNotFoundError(Exception):
+    pass
+
+
+async def get_card_audio(user_id: uuid.UUID, card_id: uuid.UUID) -> FlashcardAudioResponse:
+    owned = await UserFlashcard.find_one({"_id": card_id, "user_id": user_id})
+    if owned is None:
+        raise CardAudioNotFoundError("FLASHCARD_NOT_FOUND")
+    audio = await GlobalFlashcard.find_one({"_id": owned.global_flashcard_id}).project(
+        FlashcardAudioResponse
+    )
+    if audio is None or not audio.audio_base64:
+        raise CardAudioNotFoundError("AUDIO_NOT_AVAILABLE")
+    return audio
+
+
+async def list_card_page(
+    user_id: uuid.UUID, *, limit: int = 30, offset: int = 0
+) -> FlashcardPageResponse:
+    if not 1 <= limit <= 100 or offset < 0:
+        raise ValueError("Invalid pagination bounds")
+    query = {"user_id": user_id}
+    total = await UserFlashcard.find(query).count()
+    user_cards = (
+        await UserFlashcard.find(query)
+        .sort([("added_at", -1), ("_id", 1)])
+        .skip(offset)
+        .limit(limit)
+        .to_list()
+    )
     if not user_cards:
-        return []
-
-    global_ids = [uc.global_flashcard_id for uc in user_cards]
-    global_cards = await GlobalFlashcard.find({"_id": {"$in": global_ids}}).to_list()
-    global_map = {gc.id: gc for gc in global_cards}
-
-    result: list[FlashcardItemResponse] = []
-    for uc in user_cards:
-        gc = global_map.get(uc.global_flashcard_id)
-        if not gc:
+        return FlashcardPageResponse(items=[], total=total, next_offset=None)
+    global_ids = [card.global_flashcard_id for card in user_cards]
+    global_cards = (
+        await GlobalFlashcard.find({"_id": {"$in": global_ids}}).project(FlashcardText).to_list()
+    )
+    global_map = {card.id: card for card in global_cards}
+    image_urls = await card_image_urls(user_cards)
+    items = []
+    for card in user_cards:
+        content = global_map.get(card.global_flashcard_id)
+        if content is None:
             continue
-        result.append(
+        items.append(
             FlashcardItemResponse(
-                user_flashcard_id=uc.id,
-                global_flashcard_id=gc.id,
-                keyword=gc.keyword,
-                pronunciation=gc.pronunciation,
-                meaning_vi=gc.meaning_vi,
-                example_1=gc.example_1,
-                example_2=gc.example_2,
-                related_words=gc.related_words,
-                audio_base64=gc.audio_base64,
-                status=uc.status,
-                interval=uc.interval,
-                repetitions=uc.repetitions,
-                efactor=uc.efactor,
-                next_review_date=uc.next_review_date.isoformat(),
+                user_flashcard_id=card.id,
+                global_flashcard_id=content.id,
+                keyword=content.keyword,
+                pronunciation=content.pronunciation,
+                meaning_vi=content.meaning_vi,
+                example_1=content.example_1,
+                example_2=content.example_2,
+                related_words=content.related_words,
+                audio_base64=None,
+                image_url=image_urls.get(card.id),
+                has_image=bool(card.image_key),
+                status=card.status,
+                interval=card.interval,
+                repetitions=card.repetitions,
+                efactor=card.efactor,
+                next_review_date=card.next_review_date.isoformat(),
             )
         )
+    next_offset = offset + len(user_cards)
+    return FlashcardPageResponse(
+        items=items, total=total, next_offset=next_offset if next_offset < total else None
+    )
 
-    return result
+
+async def list_cards(
+    user_id: uuid.UUID, *, limit: int = 50, offset: int = 0
+) -> list[FlashcardItemResponse]:
+    """Bounded legacy array response. New clients use list_card_page."""
+    return (await list_card_page(user_id, limit=limit, offset=offset)).items

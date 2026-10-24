@@ -62,7 +62,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             validate_user_preferences(AccountTier.FREE, invalid_voice)
 
         # Vi phạm tốc độ đọc
-        invalid_speed = UserPreferences(preferred_voice_id="Joanna", voice_speed=1.25)
+        invalid_speed = UserPreferences(preferred_voice_id="Joanna", voice_speed=1.5)
         with self.assertRaises(TierPolicyViolation):
             validate_user_preferences(AccountTier.FREE, invalid_speed)
 
@@ -74,14 +74,14 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             validate_user_preferences(AccountTier.FREE, excessive_goal)
 
     def test_tier_policy_validation_premium_tier(self):
-        # Premium được phép dùng nhiều giọng và tốc độ
+        # MVP uses the standard voice; playback speeds work for both tiers.
         premium_pref = UserPreferences(
-            preferred_voice_id="Amy", voice_speed=0.75, daily_review_goal=50
+            preferred_voice_id="Joanna", voice_speed=0.75, daily_review_goal=50
         )
         validate_user_preferences(AccountTier.PREMIUM, premium_pref)
 
         premium_pref_2 = UserPreferences(
-            preferred_voice_id="Brian", voice_speed=1.25, daily_review_goal=100
+            preferred_voice_id="Joanna", voice_speed=1.25, daily_review_goal=100
         )
         validate_user_preferences(AccountTier.PREMIUM, premium_pref_2)
 
@@ -110,7 +110,7 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             headers={"Authorization": "Bearer token"},
         )
         self.assertEqual(res.status_code, 403)
-        self.assertIn("không thuộc quyền lợi gói FREE", res.json()["detail"])
+        self.assertIn("MVP chỉ hỗ trợ giọng đọc chuẩn", res.json()["detail"])
 
     def test_patch_preferences_premium_tier_success(self):
         async def override_user():
@@ -119,12 +119,12 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
         app.dependency_overrides[get_current_user] = override_user
         res = self.client.patch(
             "/users/me/preferences",
-            json={"preferred_voice_id": "Matthew", "voice_speed": 1.25, "daily_review_goal": 30},
+            json={"preferred_voice_id": "Joanna", "voice_speed": 1.25, "daily_review_goal": 30},
             headers={"Authorization": "Bearer token"},
         )
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertEqual(data["preferences"]["preferred_voice_id"], "Matthew")
+        self.assertEqual(data["preferences"]["preferred_voice_id"], "Joanna")
         self.assertEqual(data["preferences"]["voice_speed"], 1.25)
         self.assertEqual(data["preferences"]["daily_review_goal"], 30)
 

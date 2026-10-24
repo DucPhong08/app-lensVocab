@@ -1,151 +1,71 @@
-# 📸 LensVocab Backend API
+# LensVocab Backend
 
-> **Hệ thống Backend học từ vựng tiếng Anh qua hình ảnh sử dụng Pure AWS AI & Thuật toán lặp lại ngắt quãng (SM-2 Spaced Repetition).**
+Backend FastAPI cho ứng dụng học từ vựng tiếng Anh từ ảnh. Mỗi lần quét tạo **một thẻ từ chính**; khách có thể thử quét trước khi đăng nhập.
 
----
+## Luồng đang hoạt động
 
-## 🌟 Giới thiệu ngắn gọn
+1. Kiểm tra MIME, ảnh rỗng và kích thước tối đa 5 MB trước khi trừ quota.
+2. Đọc một snapshot cấu hình cho request, kiểm tra maintenance và hạn mức.
+3. Rekognition thu thập tối thiểu 30 nhãn ứng viên theo mặc định; số nhãn đầu ra được giới hạn riêng theo user/admin. Ngưỡng thu thập mặc định 25%, ngưỡng chấp nhận mặc định 50%.
+4. Ưu tiên danh từ cụ thể. Nhãn bối cảnh được giữ để fallback nhưng không tự trở thành vật thể chính. Không gọi Bedrock khi bối cảnh rỗng; trả `AI_COULD_NOT_RECOGNIZE` để người dùng chụp lại.
+5. Tra đúng từ khóa: Redis → MongoDB → Nova Lite và Polly chạy song song. Không có vector search, Titan hay thay từ bằng parent/alias trong luồng chạy.
+6. Người dùng xác nhận để lưu thẻ; nội dung dùng bản nháp/cached content do server tạo. Confirm lặp không tạo thêm thẻ trùng.
 
-**LensVocab** biến camera thành công cụ học từ vựng trực quan:
+## API chính
 
-1. **Chụp ảnh đồ vật:** Hệ thống nhận diện thực thể, vẽ khung viền (BoundingBox theo phong cách Google Lens).
-2. **Sinh Flashcard tức thì:** Tự động tra cứu qua **Multi-tier Cache**; nếu là từ mới hoàn toàn, AWS Bedrock (Nova Lite) sẽ sinh phiên âm IPA, giải nghĩa tiếng Việt, 2 câu ví dụ thực tế và AWS Polly sinh file phát âm MP3 chuẩn bản ngữ.
-3. **Cơ chế cứu nguy (Graceful Degradation):** Nếu ảnh mờ hoặc góc chụp khó (Rekognition confidence < 50%), Bedrock sẽ phân tích ngữ cảnh ảnh để gợi ý từ phù hợp nhất.
-4. **Ghi nhớ dài hạn (SM-2):** Tự động lên lịch ôn tập ngắt quãng dựa trên độ nhớ của học viên, đi kèm trần ôn tập hàng ngày (Anti-demotivation Cap) giúp người mất gốc không bị quá tải.
+| Method | Endpoint | Hành vi |
+| --- | --- | --- |
+| POST | `/auth/register`, `/auth/login` | Username/password; email tùy chọn khi đăng ký, hỗ trợ email tài khoản cũ khi đăng nhập; trả access token |
+| POST | `/auth/google`, `/auth/google/link` | Đăng nhập Google hoặc liên kết vào tài khoản hiện tại |
+| GET | `/auth/me` | Thông tin tài khoản, quota và preferences |
+| GET/PATCH | `/users/me/preferences` | Mục tiêu ôn, tốc độ phát trên app, số nhãn hiển thị |
+| POST | `/vision/scan/guest` | Quét thử, có quota Redis và cooldown |
+| POST | `/vision/scan` | Quét có đăng nhập |
+| POST | `/vision/scan/stream` | SSE; UI mobile hiện dùng REST |
+| POST | `/flashcards/confirm` | `{ "keyword": "chair" }` |
+| GET | `/flashcards/page?limit=30&offset=0` | `{ items, total, next_offset }`; tối đa 100 thẻ/request; không tải audio/embedding |
+| GET | `/flashcards/{user_flashcard_id}/audio` | Tải một audio khi bấm nghe; yêu cầu đăng nhập và sở hữu thẻ |
+| GET | `/flashcards?limit=50&offset=0` | Mảng legacy có giới hạn, tối đa 100 thẻ; audio là null |
+| GET | `/review/today` | Hàng đợi giới hạn theo mục tiêu và gói cước; audio tải riêng |
+| POST | `/review/{user_flashcard_id}` | Chấm điểm SM-2; hỗ trợ `review_id` để retry an toàn |
+| GET/PATCH | `/admin/settings` | Chỉ admin đang hoạt động |
 
----
+Giọng đọc MVP là một giọng chuẩn dùng chung (`POLLY_VOICE_ID`, mặc định Joanna). Engine mặc định standard. Không quảng bá đa giọng theo gói. Tốc độ 0.75x / 1x / 1.25x được app áp dụng khi phát, hỗ trợ cả hai gói.
 
-## 🛠️ Tech Stack
+## Chạy local
 
-- **Framework:** FastAPI (Python 3.12, Async/Await)
-- **Database & ODM:** MongoDB Atlas Local / Cloud M0 (`beanie==1.26.0`, `motor==3.6.0`)
-- **Vector Search:** MongoDB Atlas `$vectorSearch` (Cosine similarity, 1024 dimensions)
-- **Cache & Quota:** Redis 7 Alpine (Atomic rate-limiting, key TTL, LRU cache)
-- **Bảo mật & Auth:** Native `bcrypt` + JWT Bearer Token (`python-jose`)
-- **AWS Cloud AI Suite (Pure AWS):**
-  - **AWS Rekognition:** Nhận diện vật thể, nhãn, tọa độ BoundingBox.
-  - **AWS Bedrock (Nova Lite):** Sinh nội dung flashcard và fallback bối cảnh.
-  - **AWS Bedrock (Titan Text Embeddings v2):** Vector hóa từ vựng (1024 dims).
-  - **AWS Polly:** Text-to-Speech phát âm bản ngữ (Neural Engine).
-
----
-
-## 🏛️ Kiến trúc cốt lõi
-
-```
-Client (Camera)
-   │
-   ▼
-FastAPI [/vision/scan] ──► [Redis Quota & Maintenance Gate]
-   │
-   ├─► 1. AWS Rekognition (Detect Labels & Bounding Box)
-   │      └─► Confidence < 50%? ──► Bedrock Graceful Fallback
-   │
-   └─► 2. Multi-Tier Cache Resolver:
-          ├─► Tier 1: Redis Exact Match (Cost = $0, < 5ms)
-          ├─► Tier 2a: MongoDB Exact Match (Cost = $0, < 15ms)
-          ├─► Tier 2b: MongoDB Atlas $vectorSearch (Titan v2 Embeddings)
-          └─► Tier 3: AWS Bedrock Nova Lite + AWS Polly TTS (Cache Miss)
-```
-
-- **Chính sách gói cước (Free vs Premium):**
-  - **Free:** 10 lượt scan/ngày, trần ôn tập 15–20 từ/ngày, giọng đọc chuẩn `Joanna`.
-  - **Premium:** 200 lượt scan/ngày, mở khóa 5 giọng đọc (US/UK/AU: Joanna, Matthew, Amy, Brian, Olivia), tùy chỉnh tốc độ đọc (0.75x, 1.0x, 1.25x), mở khóa giọng Neural tự nhiên.
-- **Cấu hình động (Dynamic System Settings):** Admin có thể thay đổi hạn mức quota, ngưỡng tin cậy AI, hoặc kích hoạt chế độ bảo trì toàn hệ thống qua API/DB mà **không cần restart server**.
-
----
-
-## 🚀 Hướng dẫn cài đặt & Khởi chạy
-
-### 1. Yêu cầu môi trường
-
-- Python 3.12+
-- Docker & Docker Compose
-- MongoDB Shell (`mongosh`)
-
-### 2. Cài đặt dự án
+Yêu cầu Python 3.12 và Docker Compose. Tạo virtualenv, cài `requirements.txt` và cấu hình `.env` theo mẫu; `SECRET_KEY` là bắt buộc.
 
 ```bash
-# Clone repository
-git clone https://github.com/DucPhong08/app-lensVocab.git
-cd app-lensVocab
-
-# Khởi tạo môi trường ảo Python
 python3 -m venv .venv
-source .venv/bin/activate
-
-# Cài đặt thư viện dependencies
-pip install -r requirements.txt
-```
-
-### 3. Cấu hình biến môi trường
-
-Tạo file `.env` từ file mẫu:
-
-```bash
-cp .env.example .env
-```
-
-### 4. Khởi chạy Database & Cache (Docker)
-
-Chạy MongoDB Atlas Local và Redis qua Docker Compose:
-
-```bash
+.venv/bin/python -m pip install -r requirements.txt
 docker compose up -d mongodb redis
-```
-
-### 5. Tạo Vector Search Index (Chạy 1 lần duy nhất)
-
-Sau khi MongoDB khởi động, chạy file script để tạo Search Index cho Vector Embedding (1024 chiều):
-
-```bash
-mongosh "mongodb://root:root@localhost:27017/?authSource=admin" create_vector_index.js
-```
-
-### 6. Khởi động API Server
-
-Cách nhanh nhất (khuyên dùng):
-```bash
 make dev
 ```
 
-Hoặc chạy lệnh trực tiếp bằng uvicorn:
-```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-```
+MongoDB Atlas Local trong Compose được giữ để hỗ trợ replica set/transactions cho ôn tập. Không thay bằng Mongo standalone. Không cần tạo vector index.
 
-- **Swagger UI Documentation:** [http://localhost:8000/api](http://localhost:8000/api)
-- **ReDoc:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
+Swagger: [http://localhost:8000/api](http://localhost:8000/api).
 
----
+## Proxy và quota khách
 
-## 🧪 Chạy Kiểm Thử (Unit Tests)
+Mặc định `TRUST_PROXY_HEADERS=false`: dùng IP của peer kết nối. Khi chạy sau proxy, phải cấu hình rõ IP/CIDR của proxy trong `TRUSTED_PROXIES`, bật `TRUST_PROXY_HEADERS`, và chọn đúng `PROXY_CLIENT_IP_HEADER` do ingress ghi đè. Không tự động tin header theo biến `RENDER` và không dùng CIDR cho phép mọi nguồn.
 
-Dự án bao gồm bộ 30 unit tests tự động, mock toàn bộ dịch vụ ngoài (AWS, MongoDB, Redis):
+Xem [hợp đồng và thứ tự triển khai MVP](docs/06_MVP_SCAN_AND_DELIVERY.md) trước khi triển khai. Chưa cấu hình đúng proxy có thể làm nhiều khách dùng chung quota của một peer.
+
+## Kiểm tra
 
 ```bash
-make test
-# hoặc: .venv/bin/python -m unittest discover tests
+PYTHONDONTWRITEBYTECODE=1 .venv/bin/python -m unittest discover tests
+.venv/bin/ruff check --no-cache app tests
 ```
 
----
+Kiểm thử MongoDB thật là opt-in, chỉ dùng replica set local có thể xóa bỏ; xem [hướng dẫn kiểm thử](docs/05_OPTIMIZATION_ROLLOUT.md). Unit test mô phỏng AWS/Redis/Mongo, không chứng minh chất lượng nhận diện hay độ trễ thực tế.
 
-## 📋 Danh sách API Endpoints chính
+## Tài khoản và Google OAuth
 
-| Nhóm          | Method  | Endpoint                 | Mô tả                                                            |
-| :------------ | :------ | :----------------------- | :--------------------------------------------------------------- |
-| **Auth**      | `POST`  | `/auth/register`         | Đăng ký tài khoản mới & nhận JWT Token                           |
-|               | `POST`  | `/auth/login`            | Đăng nhập tài khoản                                              |
-|               | `GET`   | `/auth/me`               | Lấy thông tin cá nhân & hạn mức scan còn lại                     |
-| **Users**     | `GET`   | `/users/me/preferences`  | Xem sở thích học tập & quyền lợi gói cước                        |
-|               | `PATCH` | `/users/me/preferences`  | Cập nhật giọng đọc Polly, tốc độ phát âm, mục tiêu học           |
-| **Vision**    | `POST`  | `/vision/scan`           | Tải ảnh lên nhận diện đồ vật, trích xuất BoundingBox & Flashcard (REST) |
-|               | `POST`  | `/vision/scan/stream`    | Stream tiến trình nhận diện, BoundingBox & tạo Flashcard theo thời gian thực (SSE) |
-| **Flashcard** | `POST`  | `/flashcards/confirm`    | Xác nhận lưu thẻ vào bộ sưu tập cá nhân                          |
-|               | `GET`   | `/flashcards`            | Xem danh sách thẻ từ vựng đã lưu                                 |
-| **Review**    | `GET`   | `/review/today`          | Lấy hàng đợi từ cần ôn tập hôm nay (SM-2)                        |
-|               | `POST`  | `/review/submit`         | Gửi đánh giá kết quả ôn tập (chấm điểm chất lượng 0 - 5)         |
-| **Admin**     | `GET`   | `/admin/settings`        | Xem cấu hình động của hệ thống                                   |
-|               | `PATCH` | `/admin/settings`        | Cập nhật hạn mức quota, ngưỡng AI, bật/tắt bảo trì               |
+Đăng ký bằng `username` + `password`; `email` không bắt buộc. Tài khoản email cũ vẫn đăng nhập được. Đã có `POST /auth/google` và `POST /auth/google/link`; cần OAuth Client ID thật trước khi dùng. Xem [hướng dẫn cấu hình và index migration](docs/07_USERNAME_AND_GOOGLE_AUTH.md).
 
----
+## Ảnh cá nhân trên thẻ
+
+Thẻ đã lưu hỗ trợ ảnh riêng theo user qua `PUT/GET/DELETE /flashcards/{id}/image`. Ảnh được xử lý, bỏ metadata và lưu vào S3 private; để trống bucket thì upload tắt. Xem [cấu hình và hành vi ảnh](docs/08_PERSONAL_CARD_IMAGES.md).
