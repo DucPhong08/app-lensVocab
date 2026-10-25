@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 
 from app.models.setting import SystemSetting
 from app.services.ai_service import fallback_keyword_from_context
@@ -11,7 +11,7 @@ from app.services.system_setting_service import fetch_system_settings
 logger = logging.getLogger(__name__)
 
 
-class DegradationResult(str, Enum):
+class DegradationResult(StrEnum):
     OK = "OK"  # Nhận diện tự tin cao
     FALLBACK_CONTEXT = "FALLBACK"  # Confidence thấp → học từ bối cảnh xung quanh
     UNRECOGNIZABLE = "AI_COULD_NOT_RECOGNIZE"  # Không nhận diện được

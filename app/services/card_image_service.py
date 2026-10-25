@@ -7,12 +7,15 @@ import math
 import re
 import uuid
 import warnings
+from collections.abc import Coroutine
 from threading import BoundedSemaphore, Lock
+from typing import Any
 
 import boto3
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 from PIL import Image, ImageOps, UnidentifiedImageError
+from pymongo.errors import PyMongoError
 
 from app.config import settings
 from app.models.flashcard import UserFlashcard
@@ -25,6 +28,8 @@ MAX_IMAGE_PIXELS = 20_000_000
 _client = None
 _client_lock = Lock()
 _sticker_gate = BoundedSemaphore(1)
+_image_operations: set[asyncio.Task] = set()
+CLEANUP_RETRY_DELAY = 0.1
 
 
 class CardImageError(Exception):
@@ -242,10 +247,78 @@ def _delete_object(card: UserFlashcard) -> None:
 
 
 async def _cleanup(card: UserFlashcard) -> None:
+    if not owned_image_key(card):
+        return
+    for attempt in range(3):
+        try:
+            await asyncio.to_thread(_delete_object, card)
+            return
+        except CardImageError:
+            if attempt < 2:
+                await asyncio.sleep(CLEANUP_RETRY_DELAY * (attempt + 1))
+    logger.warning("card_image_cleanup_failed attempts=3 card_id=%s", card.id)
+
+
+async def _protected(operation: Coroutine[Any, Any, CardImageResponse]) -> CardImageResponse:
+    # Keep the whole storage/DB operation alive when its HTTP caller disconnects.
+    task = asyncio.create_task(operation)
+    _image_operations.add(task)
+
+    def finished(job: asyncio.Task) -> None:
+        _image_operations.discard(job)
+        if not job.cancelled() and job.exception() is not None:
+            logger.warning("card_image_operation_failed type=%s", type(job.exception()).__name__)
+
+    task.add_done_callback(finished)
+    return await asyncio.shield(task)
+
+
+async def finish_image_operations() -> None:
+    # Lifespan drains these jobs before closing storage/database clients.
+    while _image_operations:
+        await asyncio.gather(*list(_image_operations), return_exceptions=True)
+
+
+async def _update_image_key(card: UserFlashcard, key: str | None) -> None:
     try:
-        await asyncio.to_thread(_delete_object, card)
-    except CardImageError:
-        logger.warning("card_image_cleanup_failed")
+        result = await UserFlashcard.find_one(
+            {"_id": card.id, "user_id": card.user_id, "image_key": card.image_key}
+        ).update({"$set": {"image_key": key}})
+    except PyMongoError as exc:
+        # A lost acknowledgement does not prove that the write failed.
+        try:
+            current = await _owned_card(card.user_id, card.id)
+        except CardImageError as read_error:
+            if read_error.status == 404:
+                raise exc from read_error
+            raise CardImageError("IMAGE_UPDATE_UNCERTAIN", 503) from exc
+        except PyMongoError:
+            raise CardImageError("IMAGE_UPDATE_UNCERTAIN", 503) from exc
+        if current.image_key == key:
+            return
+        raise
+    if result.matched_count != 1:
+        raise CardImageError("IMAGE_UPDATE_CONFLICT", 409)
+
+
+async def _replace_image(card: UserFlashcard, content: bytes, style: str) -> CardImageResponse:
+    extension = "png" if style == "sticker" else "jpg"
+    key = f"user-images/{card.user_id.hex}/{card.id.hex}/{uuid.uuid4().hex}.{extension}"
+    updated = card.model_copy(update={"image_key": key})
+    try:
+        await asyncio.to_thread(_put_object, key, content)
+        await _update_image_key(card, key)
+    except CardImageError as exc:
+        if str(exc) != "IMAGE_UPDATE_UNCERTAIN":
+            await _cleanup(updated)
+        # Preserve both objects when DB cannot tell us which one is live.
+        raise
+    except Exception:
+        await _cleanup(updated)
+        raise
+    await _cleanup(card)
+    urls = await card_image_urls([updated])
+    return CardImageResponse(image_url=urls.get(updated.id), has_image=True, image_style=style)
 
 
 async def set_card_image(
@@ -260,32 +333,18 @@ async def set_card_image(
     if not settings.S3_IMAGE_BUCKET:
         raise CardImageError("IMAGE_STORAGE_NOT_CONFIGURED", 503)
     content = await asyncio.to_thread(prepare_image, data, crop, style=style)
-    extension = "png" if style == "sticker" else "jpg"
-    key = f"user-images/{user_id.hex}/{card_id.hex}/{uuid.uuid4().hex}.{extension}"
-    updated = card.model_copy(update={"image_key": key})
-    try:
-        await asyncio.to_thread(_put_object, key, content)
-        result = await UserFlashcard.find_one(
-            {"_id": card_id, "user_id": user_id, "image_key": card.image_key}
-        ).update({"$set": {"image_key": key}})
-        if result.matched_count != 1:
-            raise CardImageError("IMAGE_UPDATE_CONFLICT", 409)
-    except Exception:
-        await _cleanup(updated)
-        raise
+    return await _protected(_replace_image(card, content, style))
+
+
+async def _remove_image(card: UserFlashcard) -> CardImageResponse:
+    # Detach atomically before deleting: DB failure must leave the live image intact.
+    await _update_image_key(card, None)
     await _cleanup(card)
-    urls = await card_image_urls([updated])
-    return CardImageResponse(image_url=urls.get(updated.id), has_image=True, image_style=style)
+    return CardImageResponse()
 
 
 async def delete_card_image(user_id: uuid.UUID, card_id: uuid.UUID) -> CardImageResponse:
     card = await _owned_card(user_id, card_id)
     if not card.image_key:
         return CardImageResponse()
-    await asyncio.to_thread(_delete_object, card)
-    result = await UserFlashcard.find_one(
-        {"_id": card_id, "user_id": user_id, "image_key": card.image_key}
-    ).update({"$set": {"image_key": None}})
-    if result.matched_count != 1:
-        raise CardImageError("IMAGE_UPDATE_CONFLICT", 409)
-    return CardImageResponse()
+    return await _protected(_remove_image(card))

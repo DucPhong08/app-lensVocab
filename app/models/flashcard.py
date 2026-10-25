@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import UTC, date, datetime
+from enum import StrEnum
 from typing import Annotated
 
 from beanie import Document, Indexed
@@ -12,7 +12,7 @@ from pymongo import ASCENDING, IndexModel
 _DEFAULT_EFACTOR = 2.5
 
 
-class FlashcardStatus(str, enum.Enum):
+class FlashcardStatus(StrEnum):
     DRAFT = "DRAFT"
     CONFIRMED = "CONFIRMED"
 

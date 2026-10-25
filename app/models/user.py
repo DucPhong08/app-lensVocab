@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-import enum
 import uuid
 from datetime import UTC, date, datetime
+from enum import StrEnum
 
 from beanie import Document
 from pydantic import BaseModel, Field
@@ -11,7 +11,7 @@ from pymongo import IndexModel
 _DEFAULT_FREE_QUOTA = 10
 
 
-class AccountTier(str, enum.Enum):
+class AccountTier(StrEnum):
     FREE = "FREE"
     PREMIUM = "PREMIUM"
 

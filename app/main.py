@@ -22,15 +22,20 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     get_redis_pool()
     get_motor_client()
-    await setup_beanie()
-    yield
-    from app.services.ai_service import close_aws_clients
-    from app.services.card_image_service import close_storage_client
+    try:
+        await setup_beanie()
+        yield
+    finally:
+        from app.services.ai_service import close_aws_clients
+        from app.services.cache_service import finish_generation
+        from app.services.card_image_service import close_storage_client, finish_image_operations
 
-    close_storage_client()
-    close_aws_clients()
-    await close_redis_pool()
-    close_motor_client()
+        await finish_image_operations()
+        await finish_generation()
+        close_storage_client()
+        close_aws_clients()
+        await close_redis_pool()
+        close_motor_client()
 
 
 def create_app() -> FastAPI:

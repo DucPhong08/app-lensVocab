@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import date, timedelta
-from typing import TypeVar
-
-T = TypeVar("T")
 
 
 @dataclass
@@ -79,7 +76,7 @@ def compute_sm2(
     )
 
 
-def slice_review_queue(cards: list[T], cap: int = 15) -> list[T]:
+def slice_review_queue[T](cards: list[T], cap: int = 15) -> list[T]:
     """
     Chống nản: cắt danh sách ôn tập xuống tối đa `cap` từ.
     Các từ còn lại giữ nguyên trạng thái trong DB (next_review_date không thay đổi)

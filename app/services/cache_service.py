@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 from collections.abc import AsyncGenerator
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, replace
 from typing import Any
 
 import redis.asyncio as aioredis
@@ -120,6 +120,11 @@ async def get_flashcard(
     """
     normalized = keyword.lower().strip()
 
+    cached = await _lookup(normalized, redis)
+    return cached if cached is not None else await _generate_once(normalized, redis)
+
+
+async def _lookup(normalized: str, redis: aioredis.Redis) -> FlashcardPayload | None:
     # ── Tầng 1: Redis Exact Match (keyword chính) ──────────────────────────────
     cached = await _get_from_redis(redis, normalized)
     if cached is not None:
@@ -134,17 +139,52 @@ async def get_flashcard(
         await _save_to_redis(redis, payload)
         return payload
 
-    # ── Cache Miss: AWS Bedrock Nova Lite + AWS Polly (song song) ───────────────
-    # Bedrock and Polly are independent; no fixed latency improvement is assumed.
-    logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly song song", normalized)
+    return None
 
+
+# Only active jobs are retained. Public vocabulary can be shared between users;
+# separate event loops/Redis pools never share a result. This is per-process.
+_inflight: dict[tuple[asyncio.AbstractEventLoop, int, str], asyncio.Task[FlashcardPayload]] = {}
+
+
+async def _generate_once(keyword: str, redis: aioredis.Redis) -> FlashcardPayload:
+    pool = getattr(redis, "connection_pool", redis)
+    key = (asyncio.get_running_loop(), id(pool), keyword)
+    task = _inflight.get(key)
+    if task is None:
+        task = asyncio.create_task(_generate(keyword, redis))
+        _inflight[key] = task
+
+        def finished(job: asyncio.Task) -> None:
+            if _inflight.get(key) is job:
+                del _inflight[key]
+            # Observe failures even when every caller disconnects.
+            if not job.cancelled():
+                job.exception()
+
+        task.add_done_callback(finished)
+    # One disconnected/timed-out request must not cancel other callers' work.
+    payload = await asyncio.shield(task)
+    return replace(payload, related_words=list(payload.related_words))
+
+
+async def finish_generation() -> None:
+    while _inflight:
+        await asyncio.gather(*list(_inflight.values()), return_exceptions=True)
+
+
+async def _generate(keyword: str, redis: aioredis.Redis) -> FlashcardPayload:
+    # Close the race with a request that filled the cache after the first lookup.
+    cached = await _get_from_redis(redis, keyword)
+    if cached is not None:
+        return cached
+    logger.info("cache_miss=all generating vocabulary and speech")
     generated, audio_b64 = await asyncio.gather(
-        generate_flashcard_content(normalized),
-        _safe_synthesize(normalized),
+        generate_flashcard_content(keyword),
+        _safe_synthesize(keyword),
     )
-
     payload = FlashcardPayload(
-        keyword=normalized,
+        keyword=keyword,
         pronunciation=generated.pronunciation,
         meaning_vi=generated.meaning_vi,
         example_1=generated.example_1,
@@ -154,8 +194,6 @@ async def get_flashcard(
         source="bedrock",
         is_draft=True,
     )
-    # Cache draft ngay — tránh gọi lại Bedrock/Polly nếu cùng keyword được lookup
-    # lần nữa trước khi user confirm (reload trang, 2 user khác nhau...).
     await _save_to_redis(redis, payload)
     return payload
 
@@ -165,135 +203,47 @@ async def stream_flashcard(
     redis: aioredis.Redis,
     candidate_keywords: list[str] | None = None,
 ) -> AsyncGenerator[dict[str, Any], None]:
-    """Stream exact-keyword cache/generation progress, without parent substitution."""
+    """Format the shared lookup/generation result as existing SSE events."""
     normalized = keyword.lower().strip()
-
     yield {
         "event": "status",
         "data": {"step": "LOOKUP_CACHE", "message": "Đang tra cứu từ điển và bộ nhớ đệm..."},
     }
-
-    # ── Tầng 1: Redis Exact Match (keyword chính) ──────────────────────────────
-    cached = await _get_from_redis(redis, normalized)
-    if cached is not None:
-        logger.info("cache_hit=redis keyword=%s", normalized)
+    payload = await _lookup(normalized, redis)
+    if payload is None:
         yield {
-            "event": "vocab_content",
+            "event": "status",
             "data": {
-                "step": "VOCAB_CONTENT",
-                "source": "redis",
-                "keyword": cached.keyword,
-                "pronunciation": cached.pronunciation,
-                "meaning_vi": cached.meaning_vi,
-                "example_1": cached.example_1,
-                "example_2": cached.example_2,
-                "related_words": cached.related_words,
-                "is_draft": cached.is_draft,
+                "step": "AI_GENERATING",
+                "message": "Đang sinh nội dung và giọng phát âm song song...",
             },
         }
-        if cached.audio_base64:
-            yield {
-                "event": "audio_ready",
-                "data": {"step": "AUDIO_READY", "audio_base64": cached.audio_base64},
-            }
-        yield {
-            "event": "done",
-            "data": {"step": "DONE", "status": "SUCCESS", "source": "redis", "keyword": normalized},
-        }
-        return
-
-    # ── Tầng 2: MongoDB Exact Match (keyword chính) ───────────────────────────
-    exact = await _find_exact_mongodb(normalized)
-    if exact is not None:
-        logger.info("cache_hit=mongodb_exact keyword=%s", normalized)
-        payload = _payload_from_document(exact, source="mongodb", is_draft=False)
-        await _save_to_redis(redis, payload)
-        yield {
-            "event": "vocab_content",
-            "data": {
-                "step": "VOCAB_CONTENT",
-                "source": "mongodb",
-                "keyword": payload.keyword,
-                "pronunciation": payload.pronunciation,
-                "meaning_vi": payload.meaning_vi,
-                "example_1": payload.example_1,
-                "example_2": payload.example_2,
-                "related_words": payload.related_words,
-                "is_draft": False,
-            },
-        }
-        if payload.audio_base64:
-            yield {
-                "event": "audio_ready",
-                "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
-            }
-        yield {
-            "event": "done",
-            "data": {
-                "step": "DONE",
-                "status": "SUCCESS",
-                "source": "mongodb",
-                "keyword": normalized,
-            },
-        }
-        return
-
-    # ── Cache Miss: AWS Bedrock Nova Lite + AWS Polly (song song) ───────────────
-    # Chạy Bedrock và Polly đồng thời — hai tác vụ độc lập, không cần đợi nhau.
-    logger.info("cache_miss=all keyword=%s → gọi AWS Bedrock + Polly song song", normalized)
-    yield {
-        "event": "status",
-        "data": {
-            "step": "AI_GENERATING",
-            "message": "Đang sinh nội dung và giọng phát âm song song...",
-        },
-    }
-
-    generated, audio_b64 = await asyncio.gather(
-        generate_flashcard_content(normalized),
-        _safe_synthesize(normalized),
-    )
-
+        payload = await _generate_once(normalized, redis)
     yield {
         "event": "vocab_content",
         "data": {
             "step": "VOCAB_CONTENT",
-            "source": "bedrock",
-            "keyword": normalized,
-            "pronunciation": generated.pronunciation,
-            "meaning_vi": generated.meaning_vi,
-            "example_1": generated.example_1,
-            "example_2": generated.example_2,
-            "related_words": generated.related_words,
-            "is_draft": True,
+            "source": payload.source,
+            "keyword": payload.keyword,
+            "pronunciation": payload.pronunciation,
+            "meaning_vi": payload.meaning_vi,
+            "example_1": payload.example_1,
+            "example_2": payload.example_2,
+            "related_words": payload.related_words,
+            "is_draft": payload.is_draft,
         },
     }
-
-    if audio_b64:
+    if payload.audio_base64:
         yield {
             "event": "audio_ready",
-            "data": {"step": "AUDIO_READY", "audio_base64": audio_b64},
+            "data": {"step": "AUDIO_READY", "audio_base64": payload.audio_base64},
         }
-
-    payload = FlashcardPayload(
-        keyword=normalized,
-        pronunciation=generated.pronunciation,
-        meaning_vi=generated.meaning_vi,
-        example_1=generated.example_1,
-        example_2=generated.example_2,
-        related_words=generated.related_words,
-        audio_base64=audio_b64,
-        source="bedrock",
-        is_draft=True,
-    )
-    await _save_to_redis(redis, payload)
-
     yield {
         "event": "done",
         "data": {
             "step": "DONE",
             "status": "SUCCESS",
-            "source": "bedrock",
+            "source": payload.source,
             "keyword": normalized,
         },
     }

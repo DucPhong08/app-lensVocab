@@ -59,7 +59,7 @@ Dùng ảnh desk.png có sẵn trong dự án: nhận diện qua Rekognition th�
 Nguồn: [Rekognition instances](https://docs.aws.amazon.com/rekognition/latest/APIReference/API_Instance.html), [U2Net](https://github.com/xuebinqin/U-2-Net), [nguồn model ONNX U2NetP](https://github.com/danielgatis/rembg/blob/main/rembg/sessions/u2netp.py), [ONNX Runtime](https://pypi.org/project/onnxruntime/1.31.0/), [NumPy](https://pypi.org/project/numpy/2.5.4/).
 
 
-## Kiểm chứng cuối
+## Kiểm chứng trước tối ưu (24/10/2026)
 
 - Backend: 177/177 test đạt, gồm 10 test MongoDB tạm thật; không bỏ qua test.
 - UI: 57/57 test đạt, TypeScript và lint các file thay đổi đạt. Đã khôi phục API origin Render sau demo.
@@ -67,3 +67,35 @@ Nguồn: [Rekognition instances](https://docs.aws.amazon.com/rekognition/latest/
 - Demo Android dùng Rekognition thật và B2 thật. Hai PNG có alpha, mỗi vật giữ một thẻ; đổi sticker của thẻ cũ vẫn tổng 2 thẻ, ảnh cũ còn 0 phiên bản. Tài khoản mất đúng 1 lượt quét trong app.
 - Backend demo chạy thật có VmHWM 393964 KiB (khoảng 385 MiB), RSS sau xử lý khoảng 280 MiB trên máy kiểm thử; không bảo đảm tương tự trên hosting miễn phí.
 - Đã đăng xuất demo, xóa hết phiên bản sticker thử trên B2, dừng Android và các database thử riêng. Chưa triển khai lên Render, chưa chạy thiết bị iOS.
+
+## Tối ưu ảnh và lựa chọn (24/10/2026)
+
+- Máy ảnh và thư viện giới hạn cạnh dài ảnh quét ở 1600 px, giữ tỷ lệ, chất lượng JPEG 0.8. Cần kiểm tra lại vật rất nhỏ trên ảnh toàn cảnh trước khi giảm giới hạn thêm.
+- Khi lưu một vùng JPEG local có EXIF thường/180°/90°/270°, app cắt đúng tọa độ và thu nhỏ cạnh dài tối đa 768 px trước khi gửi. Không gửi `crop` lần nữa sau khi đã cắt trên thiết bị. File crop tạm được dọn sau upload kể cả khi upload lỗi.
+- PNG, JPEG lật gương, metadata chưa đọc được hoặc crop native lỗi giữ đường gửi ảnh và cắt ở backend hiện có. Đây là fallback chủ động để giữ đúng vật; không cam kết mọi định dạng đều giảm cùng mức dung lượng.
+- Thẻ được cập nhật ngay vào cache kho từ và các mục ôn tập đã có. Tải lại danh sách chạy ở nền, không giữ nút lưu; lỗi tải nền được thông báo riêng. Tổng số/cursor vẫn dùng giá trị server đến khi đồng bộ, tránh đếm sai thẻ đã có trên trang chưa tải.
+- Lựa chọn trong cùng ảnh giữ trong bộ nhớ tối đa 5 phút, theo object_id; đổi ảnh, quét lại, đổi tài khoản hoặc reset sẽ xóa. Không lưu token vùng vào ổ đĩa. Chọn A → B → A → B chỉ gọi API chọn B một lần trong cửa sổ cache.
+- Backend gộp tác vụ sinh nội dung/âm thanh cùng từ chuẩn hóa theo event loop và Redis connection pool. HTTP và SSE dùng chung tác vụ. Một client hủy không hủy tác vụ của client khác; lỗi được dọn để lần sau thử lại. Cơ chế này có phạm vi một tiến trình; nhiều worker/instance chưa được gộp liên tiến trình.
+
+### Số đo và giới hạn
+
+- Android x86_64 API 34: bốn JPEG EXIF 1/3/6/8 có kích thước 818083–820213 byte; crop còn 77297–79599 byte (~90% ít byte upload hơn). Pixel sau sửa EXIF đúng kích thước vùng chuẩn backend, sai khác trung bình 0.74–1.23/255 do nén JPEG. Vùng lớn được giới hạn thực tế ở 768×512 px. Đây là số đo fixture local, không phải cam kết tốc độ mạng/Render hay chất lượng trên mọi ảnh.
+- Benchmark offline 5 lượt, mỗi lượt 20 yêu cầu cùng từ chưa cache: trước 20 lần sinh nội dung + 20 lần sinh âm thanh; sau 1 + 1. Dịch vụ AI được mô phỏng cùng độ trễ 20 ms để đo số lần gọi, không dùng AWS thật. Độ trễ trung vị 21.83 → 21.38 ms nằm gần nhau; lợi ích đã chứng minh là giảm gọi trùng, không phải tăng tốc AI đơn lẻ.
+- Thư viện mới `@react-native-community/image-editor@5.0.0`, MIT, không dependency JavaScript phụ, yêu cầu React Native >=0.77 và New Architecture (app hiện 0.87.1). Tham khảo [tài liệu chính thức](https://github.com/callstack/react-native-image-editor). Cần build lại Android và chạy `pod install` rồi build lại iOS; Metro reload không thêm được module native.
+- Android build debug x86_64 và native crop đã kiểm tra. iOS chưa build/chạy trên máy Mac. Npm audit vẫn báo 3 cảnh báo high có sẵn ở body-parser, launch-editor, zod; thư viện cắt ảnh không nằm trong kết quả cảnh báo và lockfile chỉ thêm gói này.
+
+Kiểm chứng bản tối ưu: backend 186/186 test đạt (gồm 10 test MongoDB thật tạm, không skip); UI 79/79 test đạt, TypeScript và ESLint các file thay đổi đạt. Backend strict Ruff vẫn còn 4 lỗi có sẵn ngoài phạm vi sửa; file backend mới/sửa đạt Ruff. Kết quả này thuộc lần tối ưu ban đầu.
+
+## Refactor vòng đời ảnh và trạng thái thẻ (25/10/2026)
+
+- Upload và cập nhật/xóa ảnh được giữ thành một tác vụ có quản lý: client hủy yêu cầu không cắt ngang bước ghi storage/DB. Khi tắt server có trật tự, lifespan đợi cả tác vụ ảnh và tác vụ sinh từ hoàn tất trước khi đóng client; phần dọn tài nguyên nằm trong finally.
+- Xóa ảnh đổi image_key bằng compare-and-set trong DB trước, sau đó mới dọn object cũ. Lỗi DB không xóa mất ảnh đang được thẻ tham chiếu. Cập nhật cạnh tranh vẫn trả 409 và chỉ dọn object mới không thắng.
+- Khi driver Mongo báo lỗi ghi, backend đọc lại trạng thái. Nếu DB đã ghi thành công nhưng mất acknowledgement, giữ ảnh mới và hoàn tất bình thường. Nếu không đọc được kết quả, trả 503 IMAGE_UPDATE_UNCERTAIN và giữ các ảnh có thể đang được tham chiếu; UI hướng dẫn tải lại thẻ trước khi thử lại.
+- Dọn object dùng tối đa 3 lần thử có khoảng chờ, với đúng key thuộc user/card. Nếu storage vẫn lỗi sau 3 lần, ghi cảnh báo phục vụ xử lý vận hành; không xóa ảnh đang được DB tham chiếu để cố bù trừ. Đây là retry trong tiến trình, chưa có hàng đợi dọn ảnh bền vững sau hard kill/mất điện; không cam kết thu gom mọi object khi cả DB/storage mất kết nối kéo dài.
+- UI giữ thẻ vừa lưu theo tài khoản khi trang đầu chưa tải được, hợp nhất không trùng khi server đồng bộ. Phản hồi trang cũ không ghi đè ảnh vừa lưu. Lịch ôn cập nhật cả thẻ đang chờ; tổng số và cursor vẫn do server cung cấp.
+- Kho từ vẫn hiển thị những thẻ đã có khi tải nền lỗi/chưa xong, kèm nút tải lại. Lỗi cập nhật cache local không bị báo nhầm thành lỗi lưu server.
+- Trạng thái sticker đã lưu dựa vào object_id + ảnh + tài khoản, thay cho tham chiếu object. Chọn A → B → A giữ đúng trạng thái. Hai vùng cùng từ vẫn dùng một thẻ; thay ảnh thành công sẽ thay liên kết cũ, thay ảnh thất bại giữ liên kết đã lưu trước đó và cho thử lại sticker mới.
+- HTTP và SSE dùng chung nhận diện/vùng/metadata và tra cache/sinh từ. SSE bổ sung selected_object_id; tên event và các trường cũ được giữ. Không thay quota hoặc lược đồ DB.
+- Chuẩn hóa ba enum sang StrEnum và generic SM-2 theo Python 3.12, xử lý hết 4 lỗi Ruff trước đó.
+
+Kiểm chứng: cổng QA backend chính thức đạt Ruff toàn repo và 200/200 test, gồm 10 test MongoDB local thật, không skip. UI đạt 90/90 test, TypeScript và ESLint không có lỗi. ESLint toàn UI còn 3 warning có sẵn ở bài test API và logic tạo review_id. npm audit còn 3 cảnh báo high có sẵn ở body-parser/launch-editor (công cụ React Native CLI) và zod (công cụ lint); thư viện cắt ảnh không bị báo trong kết quả audit. Không nâng các gói ngoài phạm vi thay đổi này. Android native crop/build đã kiểm tra ở lần tối ưu trước; iOS chưa build/chạy trên máy Mac.
