@@ -20,6 +20,8 @@ class UserPreferences(BaseModel):
     preferred_voice_id: str = "Joanna"  # Joanna, Matthew, Amy, Brian, Olivia
     voice_speed: float = 1.0  # 0.75, 1.0, 1.25
     daily_review_goal: int = 15  # Mục tiêu số từ ôn mỗi ngày (Anti-demotivation)
+    animations_enabled: bool = True
+    sound_effects_enabled: bool = True
     target_language: str = "vi"  # Ngôn ngữ giải nghĩa
     max_detected_objects: int = Field(
         default=5, ge=1, le=10, description="Số vật thể tối đa muốn phát hiện trong 1 ảnh"

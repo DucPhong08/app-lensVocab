@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, StrictBool, field_validator
 
 from app.models.user import AccountTier, UserPreferences
 from app.schemas.scan_settings import ScanSettings
@@ -19,6 +19,8 @@ class UpdatePreferencesRequest(BaseModel):
     daily_review_goal: int | None = Field(
         None, ge=1, le=100, description="Mục tiêu số từ ôn tập mỗi ngày"
     )
+    animations_enabled: StrictBool | None = None
+    sound_effects_enabled: StrictBool | None = None
     target_language: str | None = Field(None, description="Mã ngôn ngữ mục tiêu (mặc định 'vi')")
     max_detected_objects: int | None = Field(
         None, ge=1, le=10, description="Số vật thể tối đa muốn phát hiện trong 1 ảnh (1-10)"
