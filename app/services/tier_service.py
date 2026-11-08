@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.config import settings
-from app.models.user import AccountTier, UserPreferences
+from app.models.setting import SystemSetting
+from app.models.user import AccountTier, User, UserPreferences
 
 TIER_POLICIES: dict[AccountTier, dict[str, Any]] = {
     AccountTier.FREE: {
@@ -48,3 +49,17 @@ def validate_user_preferences(tier: AccountTier, preferences: UserPreferences) -
         raise TierPolicyViolation(
             f"Mục tiêu ôn tập hàng ngày tối đa cho gói {tier.value} là {policy['max_daily_review_goal']} từ."
         )
+
+
+def review_goal(user: User, system_settings: SystemSetting) -> int:
+    goal = (
+        user.preferences.daily_review_goal
+        if user.preferences
+        else UserPreferences().daily_review_goal
+    )
+    cap = (
+        system_settings.premium_daily_review_cap
+        if user.account_tier == AccountTier.PREMIUM
+        else system_settings.free_daily_review_cap
+    )
+    return min(goal, cap)

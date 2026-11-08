@@ -136,7 +136,7 @@ class FlashcardDeliveryTests(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(TierPolicyViolation):
                 validate_user_preferences(tier, UserPreferences(preferred_voice_id="Amy"))
         user = User.model_construct(preferences=UserPreferences(preferred_voice_id="Amy"))
-        response = read_preferences(user)
+        response = await read_preferences(user)
         self.assertEqual(response.allowed_voices, ["Joanna"])
         self.assertEqual(response.preferences.preferred_voice_id, "Joanna")
         self.assertEqual(user.preferences.preferred_voice_id, "Amy")

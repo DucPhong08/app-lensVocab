@@ -6,6 +6,8 @@ from typing import Annotated
 from pydantic import AliasChoices, BaseModel, Field, StringConstraints, field_validator
 
 from app.models.user import AccountTier, UserPreferences
+from app.schemas.scan_settings import ScanSettings
+from app.schemas.user import PreferenceLimits
 
 _EMAIL_PATTERN = r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$"
 Username = Annotated[
@@ -75,3 +77,5 @@ class UserMeResponse(BaseModel):
     daily_quota_left: int
     is_active: bool
     preferences: UserPreferences = Field(default_factory=UserPreferences)
+    scan_settings: ScanSettings | None = None
+    preference_limits: PreferenceLimits | None = None

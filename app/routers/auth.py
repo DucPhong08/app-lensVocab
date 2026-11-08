@@ -11,6 +11,7 @@ from app.schemas.auth import (
     TokenResponse,
     UserMeResponse,
 )
+from app.schemas.user import PreferenceLimits
 from app.services.auth_service import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
@@ -70,7 +71,10 @@ async def get_me(current_user: User = Depends(get_current_user)) -> UserMeRespon
     """Lấy thông tin người dùng hiện tại và hạn mức quét còn lại."""
     response = UserMeResponse.model_validate(current_user, from_attributes=True)
     response.google_linked = bool(current_user.google_sub)
-    response.preferences = read_preferences(current_user).preferences
+    preferences = await read_preferences(current_user)
+    response.preferences = preferences.preferences
+    response.scan_settings = preferences.scan_settings
+    response.preference_limits = PreferenceLimits.model_validate(preferences.model_dump())
     return response
 
 

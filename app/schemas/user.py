@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import BaseModel, Field, field_validator
 
 from app.models.user import AccountTier, UserPreferences
+from app.schemas.scan_settings import ScanSettings
 
 
 class UpdatePreferencesRequest(BaseModel):
@@ -24,10 +25,15 @@ class UpdatePreferencesRequest(BaseModel):
     )
 
 
-class UserPreferencesResponse(BaseModel):
-    preferences: UserPreferences
-    account_tier: AccountTier
+class PreferenceLimits(BaseModel):
     allowed_voices: list[str]
     allowed_speeds: list[float]
     allow_neural_voice: bool
     max_daily_review_goal: int
+    effective_daily_review_goal: int
+
+
+class UserPreferencesResponse(PreferenceLimits):
+    preferences: UserPreferences
+    account_tier: AccountTier
+    scan_settings: ScanSettings | None = None

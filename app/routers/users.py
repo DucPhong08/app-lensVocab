@@ -16,7 +16,7 @@ async def get_my_preferences(
     current_user: User = Depends(get_current_user),
 ) -> UserPreferencesResponse:
     """Lấy thiết lập học tập cá nhân và danh sách quyền lợi theo gói cước."""
-    return read_preferences(current_user)
+    return await read_preferences(current_user)
 
 
 @router.patch("/users/me/preferences", response_model=UserPreferencesResponse)

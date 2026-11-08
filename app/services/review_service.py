@@ -8,12 +8,13 @@ from pymongo.errors import DuplicateKeyError
 from app.database import get_motor_client
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 from app.models.review import ReviewLog
-from app.models.user import AccountTier, User
+from app.models.user import User
 from app.schemas.flashcard import FlashcardText
 from app.schemas.review import ReviewCardResponse, SubmitReviewResponse
 from app.services.card_image_service import card_image_urls
 from app.services.sm2_service import compute_sm2
 from app.services.system_setting_service import fetch_system_settings
+from app.services.tier_service import review_goal
 
 
 class FlashcardNotFoundError(Exception):
@@ -28,11 +29,7 @@ async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
 
     # Cắt hàng đợi theo mục tiêu của user và trần quy định của gói cước
     sys_settings = await fetch_system_settings()
-    user_goal = current_user.preferences.daily_review_goal if current_user.preferences else 15
-    if current_user.account_tier == AccountTier.PREMIUM:
-        effective_cap = min(user_goal, sys_settings.premium_daily_review_cap)
-    else:
-        effective_cap = min(user_goal, sys_settings.free_daily_review_cap)
+    effective_cap = review_goal(current_user, sys_settings)
 
     if effective_cap <= 0:
         return []

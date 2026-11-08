@@ -13,6 +13,7 @@ from app.schemas.vision import BoundingBoxSchema, ScanResponse
 from app.services.ai_service import detect_image_labels
 from app.services.cache_service import get_flashcard, stream_flashcard
 from app.services.degradation_service import DegradationResult, evaluate_vision_result
+from app.services.scan_settings_service import scan_settings
 from app.services.system_setting_service import fetch_system_settings
 from app.services.vision_selection_service import detected_objects as scan_objects
 
@@ -32,15 +33,7 @@ async def resolve_max_objects(
 ) -> int:
     """Tính toán số vật thể tối đa, áp dụng trần hệ thống cho cả khách."""
     sys_settings = system_settings if system_settings is not None else await fetch_system_settings()
-    admin_max = getattr(sys_settings, "max_detected_objects", 5)
-    if user is None:
-        return min(5, admin_max)
-    user_max = (
-        user.preferences.max_detected_objects
-        if user.preferences and hasattr(user.preferences, "max_detected_objects")
-        else 5
-    )
-    return min(user_max, admin_max)
+    return scan_settings(user, sys_settings).max_detected_objects
 
 
 async def _analyze_image(

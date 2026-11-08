@@ -42,8 +42,8 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
         )
 
     # ── 1. User Service Tests ────────────────────────────────────────────────
-    def test_get_preferences_returns_tier_policy(self):
-        res = read_preferences(self.mock_user)
+    async def test_get_preferences_returns_tier_policy(self):
+        res = await read_preferences(self.mock_user)
         self.assertEqual(res.account_tier, AccountTier.FREE)
         self.assertEqual(res.allowed_voices, ["Joanna"])
         self.assertFalse(res.allow_neural_voice)
