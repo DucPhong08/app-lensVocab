@@ -7,6 +7,7 @@ from jose import jwt
 from app.config import settings
 from app.models.setting import SystemSetting
 from app.models.user import User
+from app.schemas.scan_settings import ScanSettings
 from app.services import vision_selection_service as selection
 from app.services.ai_service import BoundingBox, RekognitionLabel, VisionResult
 from app.services.auth_service import decode_access_token
@@ -15,6 +16,12 @@ from app.services.cache_service import FlashcardPayload
 
 def detection(labels):
     return VisionResult(labels, labels[0].name, 99, labels[0].bounding_box, [], [], [], "objects")
+
+
+def options(limit):
+    return ScanSettings(
+        max_detected_objects=limit, max_allowed_objects=10, confidence_threshold=0.5
+    )
 
 
 class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
@@ -29,22 +36,22 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_multiple_instances_have_distinct_ids_and_diverse_labels_get_priority(self):
         book = RekognitionLabel("Book", 97, [], [], [], BoundingBox(0.2, 0.2, 0.5, 0.7), True)
-        items = selection.detected_objects(detection([self.cup, book]), 3, self.user)
+        items = selection.detected_objects(detection([self.cup, book]), options(3), self.user)
         self.assertEqual([item.keyword for item in items], ["Cup", "Book", "Cup"])
         self.assertEqual(len({item.object_id for item in items}), 3)
         self.assertEqual(items[2].bounding_box.left, 0.6)
         self.assertEqual(
-            len(selection.detected_objects(detection([self.cup, book]), 2, self.user)), 2
+            len(selection.detected_objects(detection([self.cup, book]), options(2), self.user)), 2
         )
 
     async def test_same_region_alias_is_not_exposed_twice(self):
         alias = RekognitionLabel("Mug", 95, [], [], [], self.a, True)
-        items = selection.detected_objects(detection([self.cup, alias]), 5, self.user)
+        items = selection.detected_objects(detection([self.cup, alias]), options(5), self.user)
         self.assertEqual(len(items), 2)
         self.assertEqual([x.keyword for x in items], ["Cup", "Cup"])
 
     async def test_selected_instance_keeps_its_box_and_generates_only_that_word(self):
-        item = selection.detected_objects(detection([self.cup]), 5, self.user)[1]
+        item = selection.detected_objects(detection([self.cup]), options(5), self.user)[1]
         with (
             patch.object(
                 selection,
@@ -63,7 +70,9 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(decode_access_token(item.selection_token))
 
     async def test_wrong_owner_anonymous_and_tampered_tokens_are_rejected_before_lookup(self):
-        token = selection.detected_objects(detection([self.cup]), 5, self.user)[0].selection_token
+        token = selection.detected_objects(detection([self.cup]), options(5), self.user)[
+            0
+        ].selection_token
         body = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
         body["exp"] = int((datetime.now(UTC) - timedelta(minutes=1)).timestamp())
         expired = jwt.encode(body, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
@@ -82,7 +91,7 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
             lookup.assert_not_awaited()
 
     async def test_guest_selection_survives_guest_to_login_transition(self):
-        item = selection.detected_objects(detection([self.cup]), 5, None)[0]
+        item = selection.detected_objects(detection([self.cup]), options(5), None)[0]
         with (
             patch.object(
                 selection,
@@ -95,7 +104,9 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(result.keyword, "cup")
 
     async def test_maintenance_blocks_generation(self):
-        token = selection.detected_objects(detection([self.cup]), 5, self.user)[0].selection_token
+        token = selection.detected_objects(detection([self.cup]), options(5), self.user)[
+            0
+        ].selection_token
         with (
             patch.object(
                 selection,
@@ -111,7 +122,7 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
     async def test_invalid_and_weak_boxes_never_get_selection_tokens(self):
         invalid = RekognitionLabel("Bad", 99, [], [], [], BoundingBox(0.5, 0.5, 0.9, 0), True)
         weak = RekognitionLabel("Weak", 30, [], [], [], self.a, True)
-        items = selection.detected_objects(detection([invalid, weak]), 5, self.user)
+        items = selection.detected_objects(detection([invalid, weak]), options(5), self.user)
         self.assertEqual(len(items), 1)
         self.assertIsNone(items[0].selection_token)
 
@@ -120,5 +131,5 @@ class ObjectSelectionTests(unittest.IsolatedAsyncioTestCase):
         book = RekognitionLabel("Book", 96, [], [], [], BoundingBox(0.2, 0.2, 0.5, 0.7), True)
         result = detection([self.cup])
         result.candidates = [self.cup, alias, book]
-        items = selection.detected_objects(result, 3, self.user)
+        items = selection.detected_objects(result, options(3), self.user)
         self.assertEqual([item.keyword for item in items], ["Cup", "Book", "Cup"])

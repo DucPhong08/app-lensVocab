@@ -177,19 +177,16 @@ class OptimizationTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_live_vision_threshold_is_used(self):
         from app.services.degradation_service import DegradationResult, evaluate_vision_result
+        from app.services.scan_settings_service import scan_settings
 
         settings = SystemSetting.model_construct(vision_confidence_threshold=0.9)
-        with (
-            patch(
-                "app.services.degradation_service.fetch_system_settings",
-                AsyncMock(return_value=settings),
-            ),
-            patch(
-                "app.services.degradation_service.fallback_keyword_from_context",
-                AsyncMock(return_value="desk"),
-            ),
+        with patch(
+            "app.services.degradation_service.fallback_keyword_from_context",
+            AsyncMock(return_value="desk"),
         ):
-            result = await evaluate_vision_result("chair", 85, "office")
+            result = await evaluate_vision_result(
+                "chair", 85, "office", options=scan_settings(None, settings)
+            )
             self.assertEqual(result.status, DegradationResult.FALLBACK_CONTEXT)
 
     def test_aws_clients_are_reused_and_nova_uses_configured_bedrock_region(self):

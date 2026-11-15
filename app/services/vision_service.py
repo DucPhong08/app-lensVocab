@@ -28,25 +28,17 @@ def _format_sse(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-async def resolve_max_objects(
-    user: User | None, system_settings: SystemSetting | None = None
-) -> int:
-    """Tính toán số vật thể tối đa, áp dụng trần hệ thống cho cả khách."""
-    sys_settings = system_settings if system_settings is not None else await fetch_system_settings()
-    return scan_settings(user, sys_settings).max_detected_objects
-
-
 async def _analyze_image(
     image_bytes: bytes, user: User | None, system_settings: SystemSetting
 ) -> ScanResponse:
-    limit = await resolve_max_objects(user, system_settings)
-    result = await detect_image_labels(image_bytes, max_labels=limit)
-    objects = scan_objects(result, limit, user)
+    options = scan_settings(user, system_settings)
+    result = await detect_image_labels(image_bytes, max_labels=options.max_detected_objects)
+    objects = scan_objects(result, options, user)
     analysis = await evaluate_vision_result(
         keyword=result.top_label,
         confidence=result.top_confidence,
         raw_description=result.raw_description,
-        system_settings=system_settings,
+        options=options,
     )
     box = None
     if analysis.status == DegradationResult.OK and result.top_bounding_box:
@@ -96,11 +88,7 @@ async def execute_vision_scan(
     scan = await _analyze_image(image_bytes, current_user, system_settings)
     if scan.status == DegradationResult.UNRECOGNIZABLE:
         return scan
-    payload = await get_flashcard(
-        keyword=scan.keyword,
-        redis=redis,
-        candidate_keywords=scan.parents + scan.aliases,
-    )
+    payload = await get_flashcard(keyword=scan.keyword, redis=redis)
     return ScanResponse(**{**scan.model_dump(), **payload.to_dict()})
 
 
@@ -164,6 +152,5 @@ async def execute_vision_stream(
         return
 
     # Tra cứu Cache & Bedrock/Polly
-    candidate_keywords = scan.parents + scan.aliases
-    async for chunk in stream_flashcard(scan.keyword, redis, candidate_keywords=candidate_keywords):
+    async for chunk in stream_flashcard(scan.keyword, redis):
         yield _format_sse(chunk["event"], chunk["data"])

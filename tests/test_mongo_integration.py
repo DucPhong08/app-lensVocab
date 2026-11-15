@@ -19,10 +19,12 @@ from app.models.review import ReviewLog
 from app.models.setting import SystemSetting
 from app.models.user import User
 from app.schemas.flashcard import ConfirmFlashcardRequest
+from app.schemas.user import UpdatePreferencesRequest
 from app.services.cache_service import FlashcardPayload
 from app.services.flashcard_service import DraftExpiredError, confirm_card
 from app.services.quota_service import QuotaExceededError, check_and_consume_quota
 from app.services.review_service import ReviewConflictError, fetch_today_queue, submit_review
+from app.services.user_service import update_preferences
 
 
 @unittest.skipUnless(
@@ -56,6 +58,17 @@ class MongoIntegrationTests(unittest.IsolatedAsyncioTestCase):
         # Only remove the exact test-created namespace, never the app database.
         await self.client.drop_database(self.database)
         self.client.close()
+
+    async def test_preferences_from_two_devices_merge_and_return_the_stored_values(self):
+        first, second = await asyncio.gather(User.get(self.user.id), User.get(self.user.id))
+        await update_preferences(first, UpdatePreferencesRequest(animations_enabled=False))
+        result = await update_preferences(
+            second, UpdatePreferencesRequest(sound_effects_enabled=False)
+        )
+        stored = await User.get(self.user.id)
+        self.assertFalse(stored.preferences.animations_enabled)
+        self.assertFalse(stored.preferences.sound_effects_enabled)
+        self.assertEqual(result.preferences, stored.preferences)
 
     async def test_review_rolls_back_when_log_insert_fails(self):
         with (

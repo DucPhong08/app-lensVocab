@@ -4,9 +4,8 @@ import logging
 from dataclasses import dataclass
 from enum import StrEnum
 
-from app.models.setting import SystemSetting
+from app.schemas.scan_settings import ScanSettings
 from app.services.ai_service import fallback_keyword_from_context
-from app.services.system_setting_service import fetch_system_settings
 
 logger = logging.getLogger(__name__)
 
@@ -29,26 +28,12 @@ _FALLBACK_MESSAGE = "Không nhận rõ vật thể chính, đề xuất học t�
 _UNRECOGNIZABLE_MESSAGE = "Không nhận diện được vật thể trong ảnh, vui lòng nhập từ vựng thủ công."
 
 
-def _normalize_threshold_percent(threshold: float) -> float:
-    """settings.VISION_CONFIDENCE_THRESHOLD có thể được cấu hình dạng phân số
-    (0.50) hoặc phần trăm (50) tùy người config, quy về thang 0-100 để so sánh
-    trực tiếp với confidence của Rekognition.
-
-    Lưu ý: cách đoán này chỉ đáng tin với khoảng giá trị hợp lý cho một ngưỡng
-    nhận diện. Nếu set đúng 1.0, hàm coi là 100% (ngưỡng cao nhất) — nếu ý định
-    thực sự là "1%" thì dùng 0.01; số nguyên 1 cũng được hiểu là 100%. Nên thống
-    nhất 1 convention duy nhất trong settings về lâu dài thay vì dựa vào đoán.
-    """
-    threshold_percent = threshold * 100 if threshold <= 1.0 else threshold
-    return max(0.0, min(100.0, threshold_percent))
-
-
 async def evaluate_vision_result(
     keyword: str | None,
     confidence: float,
     raw_description: str,
     *,
-    system_settings: SystemSetting | None = None,
+    options: ScanSettings,
 ) -> VisionAnalysis:
     """
     Xử lý Graceful Degradation:
@@ -56,12 +41,7 @@ async def evaluate_vision_result(
     - Nếu confidence thấp hoặc keyword rỗng → Gọi AWS Bedrock fallback từ raw_description
     - Nếu fallback cũng thất bại → Trả về AI_COULD_NOT_RECOGNIZE để client điều hướng nhập tay
     """
-    system_settings = (
-        system_settings if system_settings is not None else await fetch_system_settings()
-    )
-    threshold_percent = _normalize_threshold_percent(system_settings.vision_confidence_threshold)
-
-    if keyword and confidence >= threshold_percent:
+    if keyword and options.accepts_confidence(confidence):
         return VisionAnalysis(
             status=DegradationResult.OK,
             keyword=keyword.lower().strip(),

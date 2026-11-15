@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from app.config import settings
-from app.models.user import User, UserPreferences
+from app.models.user import User
 from app.schemas.user import UpdatePreferencesRequest, UserPreferencesResponse
 from app.services.scan_settings_service import scan_settings
 from app.services.system_setting_service import fetch_system_settings
@@ -30,19 +30,12 @@ async def update_preferences(
     current_user: User, body: UpdatePreferencesRequest
 ) -> UserPreferencesResponse:
     """Cập nhật thiết lập học tập cá nhân và kiểm tra quyền lợi gói cước."""
-    current_pref = {
-        **current_user.preferences.model_dump(),
-        "preferred_voice_id": settings.POLLY_VOICE_ID,
-    }
-    update_data = body.model_dump(exclude_unset=True)
-
-    updated_dict = {**current_pref, **update_data}
-    new_pref = UserPreferences(**updated_dict)
-
-    # Validate gói cước (ném TierPolicyViolation nếu vượt quyền)
-    validate_user_preferences(current_user.account_tier, new_pref)
-
-    current_user.preferences = new_pref
-    await current_user.set({"preferences": new_pref.model_dump()})
-
+    changes = body.model_dump(exclude_unset=True)
+    if changes:
+        proposed = current_user.preferences.model_copy(
+            update={"preferred_voice_id": settings.POLLY_VOICE_ID, **changes}
+        )
+        validate_user_preferences(current_user.account_tier, proposed)
+        # Beanie refreshes current_user with the document returned by this atomic update.
+        await current_user.set({f"preferences.{key}": value for key, value in changes.items()})
     return await read_preferences(current_user)

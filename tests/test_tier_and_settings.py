@@ -13,6 +13,7 @@ from app.models.user import AccountTier, User, UserPreferences
 from app.services.quota_service import MaintenanceModeError, check_and_consume_quota
 from app.services.system_setting_service import update_system_settings
 from app.services.tier_service import TierPolicyViolation, validate_user_preferences
+from tests.preference_writes import mock_preference_writes
 
 
 class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
@@ -41,11 +42,9 @@ class TestTierAndSettings(unittest.IsolatedAsyncioTestCase):
             is_active=True,
             preferences=UserPreferences(),
         )
-        self.save_patcher = patch.object(User, "set", new_callable=AsyncMock)
-        self.mock_save = self.save_patcher.start()
+        self.enterContext(mock_preference_writes())
 
     def tearDown(self):
-        self.save_patcher.stop()
         app.dependency_overrides.clear()
 
     # ── 1. Unit Test Tier Policy Logic ───────────────────────────────────────

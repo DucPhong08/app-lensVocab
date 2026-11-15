@@ -7,8 +7,10 @@ from app.dependencies.auth import get_current_user
 from app.main import app
 from app.models.setting import SystemSetting
 from app.models.user import User, UserPreferences
+from app.services import vision_service as vision
+from app.services.ai_service import VisionResult
 from app.services.scan_settings_service import scan_settings
-from app.services.vision_service import resolve_max_objects
+from tests.preference_writes import mock_preference_writes
 
 
 class ScanSettingsTests(unittest.IsolatedAsyncioTestCase):
@@ -25,7 +27,12 @@ class ScanSettingsTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(result.max_detected_objects, expected)
                 self.assertEqual(result.max_allowed_objects, ceiling)
                 self.assertEqual(result.confidence_threshold, 0.72)
-                self.assertEqual(await resolve_max_objects(user, settings), expected)
+                empty = VisionResult([], None, 0, None, [], [], [], "")
+                with patch.object(
+                    vision, "detect_image_labels", AsyncMock(return_value=empty)
+                ) as detect:
+                    await vision._analyze_image(b"photo", user, settings)
+                    detect.assert_awaited_once_with(b"photo", max_labels=expected)
                 self.assertEqual(user.preferences.max_detected_objects, requested)
 
     async def test_guest_limit_and_legacy_threshold_remain_consistent(self):
@@ -35,6 +42,20 @@ class ScanSettingsTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(result.max_detected_objects, 3)
         self.assertEqual(result.confidence_threshold, 0.65)
+
+    def test_confidence_threshold_normalizes_fractions_percentages_and_bounds(self):
+        for stored, expected in [
+            (-5, 0),
+            (0.5, 0.5),
+            (0.85, 0.85),
+            (1, 1),
+            (60, 0.6),
+            (100, 1),
+            (150, 1),
+        ]:
+            with self.subTest(stored=stored):
+                settings = SystemSetting.model_construct(vision_confidence_threshold=stored)
+                self.assertEqual(scan_settings(None, settings).confidence_threshold, expected)
 
     async def test_me_and_preferences_expose_only_the_safe_effective_scan_settings(self):
         user = User.model_construct(preferences=UserPreferences(max_detected_objects=10))
@@ -48,7 +69,7 @@ class ScanSettingsTests(unittest.IsolatedAsyncioTestCase):
                     "app.services.user_service.fetch_system_settings",
                     AsyncMock(return_value=settings),
                 ),
-                patch.object(User, "set", AsyncMock()),
+                mock_preference_writes(),
             ):
                 client = TestClient(app)
                 me = client.get("/auth/me")

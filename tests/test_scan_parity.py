@@ -11,7 +11,45 @@ from app.services.ai_service import BoundingBox, RekognitionLabel, VisionResult
 from app.services.degradation_service import DegradationResult, VisionAnalysis
 
 
+async def scan_both(user, settings):
+    redis = object()
+    http = await vision.execute_vision_scan(b"fixture", user, redis, system_settings=settings)
+    events = [
+        frame
+        async for frame in vision.execute_vision_stream(
+            b"fixture", user, redis, system_settings=settings
+        )
+    ]
+    detected = next(frame for frame in events if frame.startswith("event: vision_detected"))
+    return http, json.loads(detected.split("data: ", 1)[1])
+
+
 class ScanParityTests(unittest.IsolatedAsyncioTestCase):
+    async def test_primary_and_selectable_objects_follow_the_same_scan_threshold(self):
+        cup = RekognitionLabel("Cup", 55, [], [], [], BoundingBox(0.2, 0.3, 0.1, 0.2))
+        book = RekognitionLabel("Book", 45, [], [], [], BoundingBox(0.2, 0.3, 0.6, 0.2))
+        result = VisionResult([cup, book], "Cup", 55, cup.bounding_box, [], [], [], "")
+        user = User.model_construct()
+        payload = cache.FlashcardPayload("cup", None, "cốc", "A", "B", [], None, "redis", False)
+        with (
+            patch.object(vision, "detect_image_labels", AsyncMock(return_value=result)),
+            patch.object(cache, "_get_from_redis", AsyncMock(return_value=payload)),
+        ):
+            for threshold, selectable in [(90, []), (0.55, ["Cup"]), (0.45, ["Cup", "Book"])]:
+                with self.subTest(threshold=threshold):
+                    settings = SystemSetting.model_construct(vision_confidence_threshold=threshold)
+                    http, streamed = await scan_both(user, settings)
+                    for scan in (http.model_dump(), streamed):
+                        self.assertEqual(scan["keyword"], "cup" if selectable else None)
+                        self.assertEqual(
+                            [
+                                item["keyword"]
+                                for item in scan["detected_objects"]
+                                if item["selection_token"]
+                            ],
+                            selectable,
+                        )
+
     async def test_http_and_stream_share_detection_fields_for_all_outcomes(self):
         box = BoundingBox(0.3, 0.4, 0.1, 0.2)
         result = VisionResult(
@@ -43,20 +81,7 @@ class ScanParityTests(unittest.IsolatedAsyncioTestCase):
                 patch.object(vision, "get_flashcard", AsyncMock(return_value=payload)) as lookup,
                 patch.object(vision, "stream_flashcard", side_effect=vocabulary),
             ):
-                http = await vision.execute_vision_scan(
-                    b"fixture", user, object(), system_settings=system
-                )
-                events = [
-                    item
-                    async for item in vision.execute_vision_stream(
-                        b"fixture", user, object(), system_settings=system
-                    )
-                ]
-                detected = next(
-                    json.loads(item.split("data: ", 1)[1])
-                    for item in events
-                    if item.startswith("event: vision_detected")
-                )
+                http, detected = await scan_both(user, system)
                 for field in [
                     "status",
                     "keyword",

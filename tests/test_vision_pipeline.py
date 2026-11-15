@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 import unittest
 import uuid
-from unittest.mock import AsyncMock, patch
+from unittest.mock import ANY, AsyncMock, patch
 
 from botocore.exceptions import ClientError
 from starlette.testclient import TestClient
@@ -140,20 +140,14 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(data["meaning_vi"], "cái ghế")
         self.assertEqual(data["confidence"], 95.0)
         self.assertEqual(data["bounding_box"]["width"], 0.5)
-        # Kiểm tra candidate_keywords được truyền đúng: top_parents + top_aliases
-        mock_get_flashcard.assert_called_once()
-        call_kwargs = mock_get_flashcard.call_args.kwargs
-        self.assertIn("candidate_keywords", call_kwargs)
-        self.assertEqual(sorted(call_kwargs["candidate_keywords"]), sorted(["Seat"]))
+        self.assertEqual(data["aliases"], ["Seat"])
+        mock_get_flashcard.assert_awaited_once_with(keyword="chair", redis=ANY)
 
-    # ── 3b. Parents/Aliases Cache Hit ────────────────────────────────────────────
     @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)
     @patch("app.services.vision_service.detect_image_labels", new_callable=AsyncMock)
-    def test_parent_alias_passed_as_candidates(self, mock_detect, mock_get_flashcard):
-        """Khi Rekognition trả về nhãn 'Armchair' với parent 'Chair',
-        router phải truyền ['Chair'] vào candidate_keywords để cache resolver
-        có thể tìm thời exact match trước khi gọi Bedrock.
-        """
+    def test_scan_looks_up_the_detected_word_and_preserves_its_parent(
+        self, mock_detect, mock_get_flashcard
+    ):
         mock_detect.return_value = VisionResult(
             labels=[RekognitionLabel("Armchair", 88.0, ["Furniture"], [], ["Chair"])],
             top_label="Armchair",
@@ -165,14 +159,14 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
             raw_description="a green armchair near window",
         )
         mock_get_flashcard.return_value = FlashcardPayload(
-            keyword="chair",
-            pronunciation="/tʃer/",
-            meaning_vi="cái ghế",
-            example_1="I sit on a chair.",
-            example_2="A wooden chair.",
-            related_words=["seat", "stool"],
+            keyword="armchair",
+            pronunciation=None,
+            meaning_vi="ghế bành",
+            example_1="I sit in an armchair.",
+            example_2="A green armchair.",
+            related_words=["chair"],
             audio_base64="mp3_mock_data",
-            source="mongodb",  # hit từ alias lookup
+            source="mongodb",
             is_draft=False,
         )
 
@@ -184,10 +178,9 @@ class TestVisionPipeline(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["status"], "OK")
-        # Kiểm tra candidate_keywords bao gồm đúng parent 'Chair'
-        call_kwargs = mock_get_flashcard.call_args.kwargs
-        self.assertIn("candidate_keywords", call_kwargs)
-        self.assertIn("Chair", call_kwargs["candidate_keywords"])
+        self.assertEqual(data["keyword"], "armchair")
+        self.assertEqual(data["parents"], ["Chair"])
+        mock_get_flashcard.assert_awaited_once_with(keyword="armchair", redis=ANY)
 
     # ── 4. Low Confidence Graceful Fallback ───────────────────────────────────
     @patch("app.services.vision_service.get_flashcard", new_callable=AsyncMock)

@@ -12,6 +12,7 @@ from app.schemas.user import UpdatePreferencesRequest
 from app.services.flashcard_service import confirm_card
 from app.services.review_service import FlashcardNotFoundError, submit_review
 from app.services.user_service import read_preferences, update_preferences
+from tests.preference_writes import mock_preference_writes
 
 
 class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
@@ -49,10 +50,13 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
         self.assertFalse(res.allow_neural_voice)
 
     async def test_update_preferences_saves_to_user(self):
-        with patch.object(User, "set", new_callable=AsyncMock) as mock_save:
+        with mock_preference_writes() as mock_save:
             req = UpdatePreferencesRequest(daily_review_goal=18, max_detected_objects=4)
             res = await update_preferences(self.mock_user, req)
-            mock_save.assert_called_once()
+            mock_save.assert_called_once_with(
+                self.mock_user,
+                {"preferences.daily_review_goal": 18, "preferences.max_detected_objects": 4},
+            )
             self.assertEqual(res.preferences.daily_review_goal, 18)
             self.assertEqual(res.preferences.max_detected_objects, 4)
 

@@ -7,6 +7,7 @@ from app.dependencies.auth import get_current_user
 from app.main import app
 from app.models.setting import SystemSetting
 from app.models.user import User, UserPreferences
+from tests.preference_writes import mock_preference_writes
 
 
 class LearningEffectsTests(unittest.TestCase):
@@ -22,7 +23,7 @@ class LearningEffectsTests(unittest.TestCase):
         )
         system.start()
         self.addCleanup(system.stop)
-        save = patch.object(User, "set", AsyncMock())
+        save = mock_preference_writes()
         self.save = save.start()
         self.addCleanup(save.stop)
         self.client = TestClient(app)
@@ -43,23 +44,16 @@ class LearningEffectsTests(unittest.TestCase):
         self.assertEqual(
             second.json()["preferences"]["voice_speed"], before.json()["preferences"]["voice_speed"]
         )
-        self.assertEqual(self.save.await_count, 2)
-        self.assertFalse(self.save.call_args.args[0]["preferences"]["sound_effects_enabled"])
+        self.assertEqual(self.save.call_count, 2)
+        self.save.assert_called_with(self.user, {"preferences.sound_effects_enabled": False})
 
-    def test_saved_effects_survive_user_document_reload(self):
-        response = self.client.patch(
-            "/users/me/preferences",
-            json={"animations_enabled": False, "sound_effects_enabled": False},
-        )
+    def test_empty_patch_returns_current_preferences_without_a_write(self):
+        response = self.client.patch("/users/me/preferences", json={})
         self.assertEqual(response.status_code, 200)
-        # Reconstruct from the exact preferences payload written to the document.
-        persisted = self.save.call_args.args[0]["preferences"]
-        self.user = User.model_construct(preferences=UserPreferences.model_validate(persisted))
-        restored = self.client.get("/auth/me")
-        self.assertEqual(restored.status_code, 200)
-        self.assertFalse(restored.json()["preferences"]["animations_enabled"])
-        self.assertFalse(restored.json()["preferences"]["sound_effects_enabled"])
-        self.assertEqual(restored.json()["preferences"]["voice_speed"], 1.0)
+        self.assertEqual(
+            response.json()["preferences"], self.client.get("/auth/me").json()["preferences"]
+        )
+        self.save.assert_not_called()
 
     def test_effect_settings_require_json_booleans(self):
         for field in ("animations_enabled", "sound_effects_enabled"):
@@ -67,4 +61,4 @@ class LearningEffectsTests(unittest.TestCase):
                 with self.subTest(field=field, value=value):
                     response = self.client.patch("/users/me/preferences", json={field: value})
                     self.assertEqual(response.status_code, 422)
-        self.save.assert_not_awaited()
+        self.save.assert_not_called()

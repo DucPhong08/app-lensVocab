@@ -9,21 +9,16 @@ from fastapi import Request
 from app.models.setting import SystemSetting
 from app.services import ai_service, degradation_service
 from app.services.guest_quota_service import client_ip
+from app.services.scan_settings_service import scan_settings
 
 
 class MVPRecognitionTests(unittest.IsolatedAsyncioTestCase):
     async def test_no_context_does_not_invoke_bedrock(self):
-        with (
-            patch.object(
-                degradation_service,
-                "fetch_system_settings",
-                AsyncMock(return_value=SystemSetting.model_construct()),
-            ),
-            patch.object(
-                degradation_service, "fallback_keyword_from_context", AsyncMock(return_value=None)
-            ) as fallback,
-        ):
-            result = await degradation_service.evaluate_vision_result(None, 0, "")
+        options = scan_settings(None, SystemSetting.model_construct())
+        with patch.object(
+            degradation_service, "fallback_keyword_from_context", AsyncMock()
+        ) as fallback:
+            result = await degradation_service.evaluate_vision_result(None, 0, "", options=options)
         fallback.assert_not_awaited()
         self.assertEqual(result.status, degradation_service.DegradationResult.UNRECOGNIZABLE)
 

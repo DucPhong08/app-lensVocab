@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from app.config import settings
 from app.models.user import User
 from app.schemas.flashcard import CropBox
+from app.schemas.scan_settings import ScanSettings
 from app.schemas.vision import BoundingBoxSchema, DetectedObjectItem, ScanResponse
 from app.services.ai_service import VisionResult
 from app.services.cache_service import get_flashcard
@@ -29,7 +30,7 @@ def overlap(a: BoundingBoxSchema, b: BoundingBoxSchema) -> float:
     return intersection / union if union else 0
 
 
-def detected_objects(result: VisionResult, limit: int, user: User | None):
+def detected_objects(result: VisionResult, options: ScanSettings, user: User | None):
     scan_id = uuid.uuid4().hex
     items: list[DetectedObjectItem] = []
     entries = [
@@ -63,10 +64,7 @@ def detected_objects(result: VisionResult, limit: int, user: User | None):
                 aliases=label.aliases,
                 parents=label.parents,
             )
-            if (
-                bounds is not None
-                and label.confidence >= settings.VISION_CONFIDENCE_THRESHOLD * 100
-            ):
+            if bounds is not None and options.accepts_confidence(label.confidence):
                 # No sub claim: this token must never authenticate an application session.
                 item.selection_token = jwt.encode(
                     {
@@ -80,7 +78,7 @@ def detected_objects(result: VisionResult, limit: int, user: User | None):
                     algorithm=settings.ALGORITHM,
                 )
             items.append(item)
-            if len(items) >= limit:
+            if len(items) >= options.max_detected_objects:
                 return items
     return items
 
