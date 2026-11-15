@@ -216,6 +216,7 @@ class MongoIntegrationTests(unittest.IsolatedAsyncioTestCase):
         )
         with (
             patch.object(images.settings, "S3_IMAGE_BUCKET", "fixture-private"),
+            patch.object(images.settings, "S3_IMAGE_ENDPOINT_URL", ""),
             patch.object(images, "_s3_client", return_value=storage),
         ):
             await images.set_card_image(self.user.id, self.card.id, output.getvalue())
@@ -247,6 +248,7 @@ class MongoIntegrationTests(unittest.IsolatedAsyncioTestCase):
         storage.generate_presigned_url.return_value = "https://private.example/signed"
         with (
             patch.object(images.settings, "S3_IMAGE_BUCKET", "fixture-private"),
+            patch.object(images.settings, "S3_IMAGE_ENDPOINT_URL", ""),
             patch.object(images, "_s3_client", return_value=storage),
         ):
             results = await asyncio.gather(

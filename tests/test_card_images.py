@@ -103,6 +103,7 @@ class ImageStorageTests(unittest.IsolatedAsyncioTestCase):
         self.query.update = AsyncMock(return_value=SimpleNamespace(matched_count=1))
         self.patchers = [
             patch.object(images.settings, "S3_IMAGE_BUCKET", "fixture-private-bucket"),
+            patch.object(images.settings, "S3_IMAGE_ENDPOINT_URL", ""),
             patch.object(images, "_s3_client", return_value=self.client),
         ]
         for patcher in self.patchers:

@@ -9,7 +9,7 @@ from app.database import get_motor_client
 from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 from app.models.review import ReviewLog
 from app.models.user import User
-from app.schemas.flashcard import FlashcardText
+from app.schemas.flashcard import FlashcardText, card_fields
 from app.schemas.review import ReviewCardResponse, SubmitReviewResponse
 from app.services.card_image_service import card_image_urls
 from app.services.sm2_service import compute_sm2
@@ -63,21 +63,8 @@ async def fetch_today_queue(current_user: User) -> list[ReviewCardResponse]:
             continue
         result.append(
             ReviewCardResponse(
-                user_flashcard_id=uc.id,
-                keyword=gc.keyword,
-                pronunciation=gc.pronunciation,
-                meaning_vi=gc.meaning_vi,
-                example_1=gc.example_1,
-                example_2=gc.example_2,
-                related_words=gc.related_words,
+                **card_fields(uc, gc, image_urls.get(uc.id)),
                 audio_base64=None,
-                image_url=image_urls.get(uc.id),
-                has_image=bool(uc.image_key),
-                image_style="sticker" if (uc.image_key or "").endswith(".png") else "photo",
-                interval=uc.interval,
-                repetitions=uc.repetitions,
-                efactor=uc.efactor,
-                next_review_date=uc.next_review_date.isoformat(),
             )
         )
 

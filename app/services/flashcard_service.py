@@ -13,6 +13,7 @@ from app.schemas.flashcard import (
     FlashcardItemResponse,
     FlashcardPageResponse,
     FlashcardText,
+    card_fields,
 )
 from app.services.cache_service import _get_from_redis, save_global_flashcard
 from app.services.card_image_service import card_image_urls
@@ -72,23 +73,10 @@ async def confirm_card(
 
     image_urls = await card_image_urls([user_card])
     return FlashcardItemResponse(
-        user_flashcard_id=user_card.id,
+        **card_fields(user_card, global_card, image_urls.get(user_card.id)),
         global_flashcard_id=global_card.id,
-        keyword=global_card.keyword,
-        pronunciation=global_card.pronunciation,
-        meaning_vi=global_card.meaning_vi,
-        example_1=global_card.example_1,
-        example_2=global_card.example_2,
-        related_words=global_card.related_words,
         audio_base64=global_card.audio_base64,
-        image_url=image_urls.get(user_card.id),
-        has_image=bool(user_card.image_key),
-        image_style="sticker" if (user_card.image_key or "").endswith(".png") else "photo",
         status=user_card.status,
-        interval=user_card.interval,
-        repetitions=user_card.repetitions,
-        efactor=user_card.efactor,
-        next_review_date=user_card.next_review_date.isoformat(),
     )
 
 
@@ -137,23 +125,10 @@ async def list_card_page(
             continue
         items.append(
             FlashcardItemResponse(
-                user_flashcard_id=card.id,
+                **card_fields(card, content, image_urls.get(card.id)),
                 global_flashcard_id=content.id,
-                keyword=content.keyword,
-                pronunciation=content.pronunciation,
-                meaning_vi=content.meaning_vi,
-                example_1=content.example_1,
-                example_2=content.example_2,
-                related_words=content.related_words,
                 audio_base64=None,
-                image_url=image_urls.get(card.id),
-                has_image=bool(card.image_key),
-                image_style="sticker" if (card.image_key or "").endswith(".png") else "photo",
                 status=card.status,
-                interval=card.interval,
-                repetitions=card.repetitions,
-                efactor=card.efactor,
-                next_review_date=card.next_review_date.isoformat(),
             )
         )
     next_offset = offset + len(user_cards)

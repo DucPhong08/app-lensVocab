@@ -5,7 +5,7 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
 
-from app.models.flashcard import FlashcardStatus
+from app.models.flashcard import FlashcardStatus, GlobalFlashcard, UserFlashcard
 
 
 class ConfirmFlashcardRequest(BaseModel):
@@ -45,6 +45,27 @@ class FlashcardText(BaseModel):
     example_1: str
     example_2: str
     related_words: list[str] = []
+
+
+def card_fields(
+    card: UserFlashcard, content: FlashcardText | GlobalFlashcard, image_url: str | None
+) -> dict[str, object]:
+    return {
+        "user_flashcard_id": card.id,
+        "keyword": content.keyword,
+        "pronunciation": content.pronunciation,
+        "meaning_vi": content.meaning_vi,
+        "example_1": content.example_1,
+        "example_2": content.example_2,
+        "related_words": content.related_words,
+        "image_url": image_url,
+        "has_image": bool(card.image_key),
+        "image_style": "sticker" if (card.image_key or "").endswith(".png") else "photo",
+        "interval": card.interval,
+        "repetitions": card.repetitions,
+        "efactor": card.efactor,
+        "next_review_date": card.next_review_date.isoformat(),
+    }
 
 
 class FlashcardPageResponse(BaseModel):

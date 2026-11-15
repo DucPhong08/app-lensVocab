@@ -258,7 +258,7 @@ class TestTodayQueueLimit(unittest.IsolatedAsyncioTestCase):
             example_1="A chair.",
             example_2="The chair is wooden.",
             related_words=[],
-            audio_base64=None,
+            audio_base64="YXVkaW8=",
         )
         due_query = MagicMock()
         due_query.sort.return_value = due_query
@@ -284,6 +284,7 @@ class TestTodayQueueLimit(unittest.IsolatedAsyncioTestCase):
         due_query.limit.assert_called_once_with(2)
         due_query.to_list.assert_awaited_once_with()
         self.assertEqual([card.keyword for card in result], ["chair"])
+        self.assertIsNone(result[0].audio_base64)
 
 
 if __name__ == "__main__":

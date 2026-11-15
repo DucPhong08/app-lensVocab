@@ -72,7 +72,7 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
             example_1="Type on keyboard.",
             example_2="Wireless keyboard.",
             related_words=["mouse"],
-            audio_base64=None,
+            audio_base64="YXVkaW8=",
         )
         mock_save_global.return_value = global_card
 
@@ -89,6 +89,7 @@ class TestServicesLayer(unittest.IsolatedAsyncioTestCase):
         res = await confirm_card(self.user_id, req, mock_redis)
         self.assertEqual(res.keyword, "keyboard")
         self.assertEqual(res.meaning_vi, "bàn phím")
+        self.assertEqual(res.audio_base64, global_card.audio_base64)
         self.assertEqual(res.status, FlashcardStatus.CONFIRMED)
         mock_insert.assert_called_once()
 
